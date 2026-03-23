@@ -12,7 +12,7 @@ export interface AppSettings {
   wrapBySpaces: boolean;
 }
 
-const SETTINGS_KEY = 'mos:settings:v1';
+const SETTINGS_KEY = 'mos:settings:v2';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   fontStyle: 'System',
@@ -24,16 +24,29 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 export async function loadAppSettings(): Promise<AppSettings> {
   try {
-    const raw = await AsyncStorage.getItem(SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
-    const parsed = JSON.parse(raw) as Partial<AppSettings> & { alignment?: TextAlignKey };
-    return {
-      fontStyle: parsed.fontStyle ?? DEFAULT_SETTINGS.fontStyle,
-      fontSize: parsed.fontSize ?? DEFAULT_SETTINGS.fontSize,
-      horizontalPosition: parsed.horizontalPosition ?? parsed.alignment ?? DEFAULT_SETTINGS.horizontalPosition,
-      verticalPosition: parsed.verticalPosition ?? DEFAULT_SETTINGS.verticalPosition,
-      wrapBySpaces: parsed.wrapBySpaces ?? DEFAULT_SETTINGS.wrapBySpaces,
-    };
+    const rawV2 = await AsyncStorage.getItem(SETTINGS_KEY);
+    if (rawV2) {
+      const parsed = JSON.parse(rawV2) as Partial<AppSettings>;
+      return {
+        fontStyle: parsed.fontStyle ?? DEFAULT_SETTINGS.fontStyle,
+        fontSize: parsed.fontSize ?? DEFAULT_SETTINGS.fontSize,
+        horizontalPosition: parsed.horizontalPosition ?? DEFAULT_SETTINGS.horizontalPosition,
+        verticalPosition: parsed.verticalPosition ?? DEFAULT_SETTINGS.verticalPosition,
+        wrapBySpaces: parsed.wrapBySpaces ?? DEFAULT_SETTINGS.wrapBySpaces,
+      };
+    }
+    const rawV1 = await AsyncStorage.getItem('mos:settings:v1');
+    if (rawV1) {
+      const parsed = JSON.parse(rawV1) as Partial<AppSettings> & { alignment?: TextAlignKey };
+      return {
+        fontStyle: parsed.fontStyle ?? DEFAULT_SETTINGS.fontStyle,
+        fontSize: parsed.fontSize ?? DEFAULT_SETTINGS.fontSize,
+        horizontalPosition: parsed.horizontalPosition ?? parsed.alignment ?? DEFAULT_SETTINGS.horizontalPosition,
+        verticalPosition: parsed.verticalPosition ?? DEFAULT_SETTINGS.verticalPosition,
+        wrapBySpaces: parsed.wrapBySpaces ?? DEFAULT_SETTINGS.wrapBySpaces,
+      };
+    }
+    return DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }

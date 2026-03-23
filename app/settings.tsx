@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { DEFAULT_SETTINGS, FontStyleKey, TextAlignKey, VerticalPositionKey, loadAppSettings, saveAppSettings } from '@/src/storage/appSettings';
+import {
+  DEFAULT_SETTINGS,
+  FontStyleKey,
+  TextAlignKey,
+  VerticalPositionKey,
+  loadAppSettings,
+  saveAppSettings,
+} from '@/src/storage/appSettings';
 
 const FONT_OPTIONS: FontStyleKey[] = ['System', 'Excalifont', 'ShadowsIntoLight'];
 const SIZE_OPTIONS = [12, 16, 20, 24, 28, 32];
@@ -178,6 +185,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#fff' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   switchLabel: { color: '#1f2937', fontWeight: '600' },
+  hint: { fontSize: 12, color: '#6b7280', marginTop: 4 },
   previewInput: {
     borderWidth: 1,
     borderColor: '#e5e7eb',

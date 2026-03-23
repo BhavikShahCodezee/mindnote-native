@@ -17,7 +17,8 @@
         "NSBluetoothAlwaysUsageDescription": "This app needs Bluetooth to connect to the thermal printer.",
         "NSBluetoothPeripheralUsageDescription": "This app needs Bluetooth to connect to the thermal printer.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photos to print images."
-      }
+      },
+      "bundleIdentifier": "com.bhavik01.mos"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,6 +36,7 @@
         "BLUETOOTH_SCAN",
         "ACCESS_FINE_LOCATION",
         "READ_EXTERNAL_STORAGE",
+        "READ_MEDIA_IMAGES",
         "WRITE_EXTERNAL_STORAGE",
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
@@ -79,8 +81,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e07b1e1d-a1c0-4440-bd29-3d2a8883a18d"
+        "projectId": "0d86cea4-0358-48ca-b90e-1bece20ffa96"
       }
-    }
+    },
+    "owner": "bhavikcodezee"
   }
 }

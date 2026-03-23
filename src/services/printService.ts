@@ -8,24 +8,24 @@
  */
 
 import { DitheringAlgorithm } from '../image/dithering';
-import { processImageForPrinting, invertBinaryImage, ProcessImageOptions } from '../image/imageProcessor';
 import { cmdsPrintImg } from '../printer/commandGenerator';
 import { getPrinterService } from '../bluetooth/printerService';
 import { getDryRun, getQuality } from '../settings';
 import type { Device } from 'react-native-ble-plx';
+import { processJpegBase64ToBitmap } from '@/src/utils/imageProcessor';
+import type { AppSettings } from '@/src/storage/appSettings';
+import { loadAppSettings } from '@/src/storage/appSettings';
+import { printTextDirect } from '@/src/text/textPrintService';
+import { logDebug } from '@/src/debug/logDebug';
 
 /**
  * Print configuration options (Cat-Printer–style)
  */
 export interface PrintOptions {
   imageUri: string;
+  imageBase64?: string;
   algorithm?: DitheringAlgorithm;
   energy?: number;
-  /** Brightness/threshold 0-255. Higher = darker. */
-  threshold?: number;
-  /** Rotate image 90° before printing. */
-  rotate?: boolean;
-  transparentAsWhite?: boolean;
   deviceName?: string;
   /** Use this device if already connected. */
   device?: Device | null;
@@ -49,6 +49,54 @@ export interface PrintResult {
  * Handles the complete printing workflow from image to printed output.
  */
 export class PrintService {
+  private async getCurrentPrintConfig(): Promise<{
+    settings: AppSettings;
+    energy: number;
+  }> {
+    const settings = await loadAppSettings();
+    // Force MAX density (no fading).
+    const energy = 0xffff;
+    return { settings, energy };
+  }
+
+  async printText(text: string, device?: Device | null): Promise<PrintResult> {
+    try {
+      const { settings, energy } = await this.getCurrentPrintConfig();
+      console.log('Font Config:', {
+        fontStyle: settings.fontStyle,
+        fontSize: settings.fontSize,
+        align: settings.horizontalPosition,
+        wrapBySpaces: settings.wrapBySpaces,
+      });
+      const result = await printTextDirect({
+        text,
+        fontSize: settings.fontSize,
+        fontStyle: settings.fontStyle,
+        align: settings.horizontalPosition,
+        wrapBySpaces: settings.wrapBySpaces,
+        energy,
+        device,
+      });
+      return result;
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
+  }
+
+  async printImage(imageUri: string, imageBase64: string, device?: Device | null): Promise<PrintResult> {
+    const { energy } = await this.getCurrentPrintConfig();
+    return this.print({
+      imageUri,
+      imageBase64,
+      energy,
+      device,
+    });
+  }
+
   /**
    * Process and print an image
    * 
@@ -58,11 +106,8 @@ export class PrintService {
   async print(options: PrintOptions): Promise<PrintResult> {
     const {
       imageUri,
+      imageBase64,
       algorithm = 'floyd-steinberg',
-      energy = 0xffff,
-      threshold = 127,
-      rotate = false,
-      transparentAsWhite = true,
       deviceName,
       device,
       showPreview = false,
@@ -72,22 +117,44 @@ export class PrintService {
       console.log('🖨️ Starting print job...');
       console.log(`   Image: ${imageUri}`);
       console.log(`   Algorithm: ${algorithm}`);
-      console.log(`   Energy: 0x${energy.toString(16)}`);
-
-      const processOpts: ProcessImageOptions = {
-        threshold,
-        rotate,
-        transparentAsWhite,
-      };
+      const forcedEnergy = 0xffff;
+      console.log(`   Energy: 0x${forcedEnergy.toString(16)}`);
+      const { settings } = await this.getCurrentPrintConfig();
+      console.log('Font Config:', {
+        fontStyle: settings.fontStyle,
+        fontSize: settings.fontSize,
+        align: settings.horizontalPosition,
+        wrapBySpaces: settings.wrapBySpaces,
+      });
       console.log('⏳ Processing image...');
-      const binaryImage = await processImageForPrinting(imageUri, algorithm, processOpts);
-      
-      // Invert image (printer logic)
-      const invertedImage = invertBinaryImage(binaryImage);
+      if (!imageBase64) throw new Error('Missing image base64 payload for processing');
+
+      logDebug('Print started: image');
+      logDebug(`Image processing started uri=${imageUri}`);
+
+      const binaryImage = processJpegBase64ToBitmap(imageBase64);
+      logDebug(`Image processed. rows=${binaryImage.length}`);
+
+      // Cat-Printer firmware expects bitmap bits in a specific polarity.
+      // The wasm `monoToPbm` step XORs packed bits (equivalent to complementing the mono bitmap),
+      // while our `cmdsPrintImg()` only reverse-bits per byte.
+      // So we replicate both:
+      //  - vertical flip (Python: `flip(..., vertically=True)` in `_print_bitmap`)
+      //  - bit polarity complement (Python/wasm PBM XOR behaviour)
+      const binaryForPrinter = [...binaryImage]
+        .reverse()
+        // Fix horizontal mirroring: mirror each row before packing bytes.
+        .map((row) => row.slice().reverse().map((p) => !p));
+      const blackPixels = binaryForPrinter.reduce(
+        (sum, row) => sum + row.reduce((s, p) => s + (p ? 1 : 0), 0),
+        0
+      );
+      logDebug(`Bitmap generated (flipped+complemented). rows=${binaryForPrinter.length} blackPixels=${blackPixels}`);
+      if (binaryForPrinter.length === 0) throw new Error('Image bitmap is empty');
       
       const imageSize = {
-        height: invertedImage.length,
-        width: invertedImage[0]?.length || 0,
+        height: binaryForPrinter.length,
+        width: binaryForPrinter[0]?.length || 0,
       };
       
       console.log(`✅ Image processed: ${imageSize.height}x${imageSize.width} pixels`);
@@ -101,7 +168,7 @@ export class PrintService {
       console.log('⏳ Generating printer commands...');
       const quality = getQuality();
       const modelName = device?.name ?? deviceName;
-      const commandData = cmdsPrintImg(invertedImage, energy, quality, modelName);
+      const commandData = cmdsPrintImg(binaryForPrinter, forcedEnergy, quality, modelName);
       console.log(`✅ Generated ${commandData.length} bytes of commands`);
       console.log(`   Command preview: ${Array.from(commandData.slice(0, 24)).map((b) => b.toString(16).padStart(2, '0')).join(' ')} ...`);
       

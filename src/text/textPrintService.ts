@@ -3,6 +3,7 @@ import { cmdsPrintImg } from '../printer/commandGenerator';
 import { getPrinterService, POSSIBLE_SERVICE_UUIDS } from '../bluetooth/printerService';
 import { getQuality } from '../settings';
 import { wrapTextToLines } from './textWrap';
+import type { FontStyleKey } from '@/src/storage/appSettings';
 
 type BinaryImage = boolean[][];
 type GrayscaleImage = number[][];
@@ -14,6 +15,7 @@ type TextAlign = 'left' | 'center' | 'right';
 interface TextPrintOptions {
   text: string;
   fontSize: number;
+  fontStyle?: FontStyleKey;
   align: TextAlign;
   wrapBySpaces: boolean;
   energy?: number;
@@ -85,14 +87,21 @@ function glyphFor(ch: string): number[] {
 function createGrayscaleTextImage(
   text: string,
   fontSize: number,
+  fontStyle: FontStyleKey,
   align: TextAlign,
   wrapBySpaces: boolean
 ): GrayscaleImage {
-  const scale = Math.max(1, Math.round(fontSize / 12));
+  const styleScale =
+    fontStyle === 'Excalifont' ? 1.08 : fontStyle === 'ShadowsIntoLight' ? 1.15 : 1;
+  const scale = Math.max(1, Math.round((fontSize * styleScale) / 12));
   const glyphWidth = 5 * scale;
   const glyphHeight = 7 * scale;
-  const letterSpacing = 1 * scale;
-  const lineSpacing = 2 * scale;
+  const styleLetterSpacing =
+    fontStyle === 'Excalifont' ? 2 : fontStyle === 'ShadowsIntoLight' ? 3 : 1;
+  const styleLineSpacing =
+    fontStyle === 'Excalifont' ? 2 : fontStyle === 'ShadowsIntoLight' ? 3 : 2;
+  const letterSpacing = styleLetterSpacing * scale;
+  const lineSpacing = styleLineSpacing * scale;
   const charAdvance = glyphWidth + letterSpacing;
   const lineHeight = glyphHeight + lineSpacing;
 
@@ -119,12 +128,18 @@ function createGrayscaleTextImage(
       const glyph = glyphFor(ch);
       for (let gy = 0; gy < 7; gy++) {
         const rowBits = glyph[gy] ?? 0;
+        const slantOffset =
+          fontStyle === 'ShadowsIntoLight'
+            ? Math.floor((6 - gy) * 0.6 * scale)
+            : fontStyle === 'Excalifont'
+              ? Math.floor((6 - gy) * 0.3 * scale)
+              : 0;
         for (let gx = 0; gx < 5; gx++) {
           if (((rowBits >> (4 - gx)) & 1) !== 1) continue;
           for (let sy = 0; sy < scale; sy++) {
             for (let sx = 0; sx < scale; sx++) {
               const py = y0 + gy * scale + sy;
-              const px = x + gx * scale + sx;
+              const px = x + gx * scale + sx + slantOffset;
               if (py >= 0 && py < image.length && px >= 0 && px < PRINTER_WIDTH) {
                 image[py][px] = 0; // black
               }
@@ -168,6 +183,7 @@ export async function printTextDirect(options: TextPrintOptions): Promise<TextPr
   const {
     text,
     fontSize,
+    fontStyle = 'System',
     align,
     wrapBySpaces,
     energy = 0xffff,
@@ -178,9 +194,9 @@ export async function printTextDirect(options: TextPrintOptions): Promise<TextPr
     const activeDevice = await ensureWritableConnectedDevice(device);
     console.log(`🖨️ Text print device connected: ${activeDevice.name ?? activeDevice.id}`);
     console.log(`📝 Text input: "${text}"`);
-    console.log(`   fontSize=${fontSize} align=${align} wrapBySpaces=${wrapBySpaces}`);
+    console.log(`   fontSize=${fontSize} fontStyle=${fontStyle} align=${align} wrapBySpaces=${wrapBySpaces}`);
 
-    const grayscale = createGrayscaleTextImage(text, fontSize, align, wrapBySpaces);
+    const grayscale = createGrayscaleTextImage(text, fontSize, fontStyle, align, wrapBySpaces);
     const mono = grayscaleToMonochrome(grayscale, 127);
     const width = mono[0]?.length ?? 0;
     const height = mono.length;

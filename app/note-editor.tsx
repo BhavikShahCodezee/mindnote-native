@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ensureConnectedPrinter } from '@/src/bluetooth/ensureConnectedPrinter';
 import { loadAppSettings } from '@/src/storage/appSettings';
 import { loadNotes, upsertNote } from '@/src/storage/notes';
-import { printTextDirect } from '@/src/text/textPrintService';
+import { getPrintService } from '@/src/services/printService';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -12,6 +12,7 @@ function generateId(): string {
 
 export default function NoteEditorScreen() {
   const router = useRouter();
+  const printService = getPrintService();
   const params = useLocalSearchParams<{ id?: string }>();
   const noteId = params.id;
   const [value, setValue] = useState('');
@@ -48,15 +49,8 @@ export default function NoteEditorScreen() {
       const id = typeof noteId === 'string' ? noteId : generateId();
       await upsertNote({ id, content, updatedAt: now });
 
-      const settings = await loadAppSettings();
       const device = await ensureConnectedPrinter();
-      const result = await printTextDirect({
-        text: content,
-        fontSize: settings.fontSize,
-        align: settings.horizontalPosition,
-        wrapBySpaces: settings.wrapBySpaces,
-        device,
-      });
+      const result = await printService.printText(content, device);
       if (!result.success) {
         throw result.error ?? new Error(result.message);
       }

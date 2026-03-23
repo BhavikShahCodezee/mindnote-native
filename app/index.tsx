@@ -1,6 +1,9 @@
+import { ensureConnectedPrinter } from '@/src/bluetooth/ensureConnectedPrinter';
 import { getPrinterService } from '@/src/bluetooth/printerService';
+import { logDebug } from '@/src/debug/logDebug';
 import { getPrintService } from '@/src/services/printService';
 import { clearSavedPrinter, loadSavedPrinter, savePrinter } from '@/src/storage/savedPrinter';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -14,6 +17,7 @@ export default function HomeScreen() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [savedDeviceId, setSavedDeviceId] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
   const connected = printService.isConnected();
   const connectedDeviceName = connected ? getPrinterService().getConnectedDevice()?.name ?? 'Printer' : null;
 
@@ -69,6 +73,48 @@ export default function HomeScreen() {
     Alert.alert('Done', 'Saved printer removed');
   }, []);
 
+  const onImagePrint = useCallback(async () => {
+    if (!connected) {
+      Alert.alert('Printer not connected', 'Please connect to a printer first.');
+      return;
+    }
+    setPrinting(true);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Gallery access is required to select an image.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: false,
+        base64: true,
+        quality: 1,
+      });
+      if (result.canceled || !result.assets?.[0]) {
+        return;
+      }
+      const uri = result.assets[0].uri;
+      const base64 = result.assets[0].base64;
+      if (!base64) {
+        throw new Error('Selected image has no base64 payload');
+      }
+      logDebug(`Image selected uri=${uri}`);
+      logDebug(`Image base64 length=${base64.length}`);
+      const device = await ensureConnectedPrinter();
+      const printResult = await printService.printImage(uri, base64, device);
+      if (printResult.success) {
+        Alert.alert('Done', 'Image printed successfully.');
+      } else {
+        throw new Error(printResult.message);
+      }
+    } catch (e) {
+      Alert.alert('Print failed', e instanceof Error ? e.message : 'Unable to print image');
+    } finally {
+      setPrinting(false);
+    }
+  }, [connected, printService]);
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>MosMos -JM</Text>
@@ -97,6 +143,17 @@ export default function HomeScreen() {
       <View style={styles.actionsRow}>
         <TouchableOpacity style={styles.primaryButton} onPress={() => router.push('/notes' as never)}>
           <Text style={styles.primaryText}>Notes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={onImagePrint}
+          disabled={!connected || printing}
+        >
+          {printing ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryText}>Image</Text>
+          )}
         </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push('/settings' as never)}>
           <Text style={styles.secondaryText}>Settings</Text>
