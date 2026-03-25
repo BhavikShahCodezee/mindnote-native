@@ -14,7 +14,11 @@ import { getDryRun, getQuality } from '../settings';
 import type { Device } from 'react-native-ble-plx';
 import { processJpegBase64ToBitmap } from '@/src/utils/imageProcessor';
 import type { AppSettings } from '@/src/storage/appSettings';
-import { loadAppSettings } from '@/src/storage/appSettings';
+import {
+  fontSizeForPrint,
+  horizontalAlignForPrint,
+  loadAppSettings,
+} from '@/src/storage/appSettings';
 import { printTextDirect } from '@/src/text/textPrintService';
 import { logDebug } from '@/src/debug/logDebug';
 
@@ -64,15 +68,15 @@ export class PrintService {
       const { settings, energy } = await this.getCurrentPrintConfig();
       console.log('Font Config:', {
         fontStyle: settings.fontStyle,
-        fontSize: settings.fontSize,
-        align: settings.horizontalPosition,
+        fontSize: fontSizeForPrint(settings),
+        align: horizontalAlignForPrint(settings),
         wrapBySpaces: settings.wrapBySpaces,
       });
       const result = await printTextDirect({
         text,
-        fontSize: settings.fontSize,
+        fontSize: fontSizeForPrint(settings),
         fontStyle: settings.fontStyle,
-        align: settings.horizontalPosition,
+        align: horizontalAlignForPrint(settings),
         wrapBySpaces: settings.wrapBySpaces,
         energy,
         device,
@@ -122,8 +126,8 @@ export class PrintService {
       const { settings } = await this.getCurrentPrintConfig();
       console.log('Font Config:', {
         fontStyle: settings.fontStyle,
-        fontSize: settings.fontSize,
-        align: settings.horizontalPosition,
+        fontSize: fontSizeForPrint(settings),
+        align: horizontalAlignForPrint(settings),
         wrapBySpaces: settings.wrapBySpaces,
       });
       console.log('⏳ Processing image...');

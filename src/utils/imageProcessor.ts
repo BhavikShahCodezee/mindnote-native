@@ -2,6 +2,8 @@ import { Buffer } from 'buffer';
 import jpeg from 'jpeg-js';
 import UPNG from 'upng-js';
 import type { BinaryImage, GrayscaleImage } from '@/src/image/dithering';
+import { PRINT_WIDTH } from '@/src/printer/commandGenerator';
+import { TICKET_HEIGHT_MM, TICKET_WIDTH_MM } from '@/constants/printTicket';
 
 interface JpegPixels {
   width: number;
@@ -97,6 +99,80 @@ export function resizeImage(
 }
 
 /**
+ * Nearest-neighbor resize that targets an exact output width/height.
+ * We use it for the final printer bitmap so we can guarantee:
+ * - fixed printer width
+ * - fixed printer height
+ * - no cropping ("contain")
+ */
+function resizeImageNearest(
+  rgba: Uint8Array,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number
+): { width: number; height: number; rgba: Uint8Array } {
+  const out = new Uint8Array(targetWidth * targetHeight * 4);
+  for (let y = 0; y < targetHeight; y++) {
+    const sy =
+      targetHeight <= 1
+        ? 0
+        : Math.min(sourceHeight - 1, Math.floor((y * (sourceHeight - 1)) / (targetHeight - 1)));
+    for (let x = 0; x < targetWidth; x++) {
+      const sx =
+        targetWidth <= 1 ? 0 : Math.min(sourceWidth - 1, Math.floor((x * (sourceWidth - 1)) / (targetWidth - 1)));
+      const si = (sy * sourceWidth + sx) * 4;
+      const di = (y * targetWidth + x) * 4;
+      out[di] = rgba[si] ?? 0;
+      out[di + 1] = rgba[si + 1] ?? 0;
+      out[di + 2] = rgba[si + 2] ?? 0;
+      out[di + 3] = rgba[si + 3] ?? 255;
+    }
+  }
+  return { width: targetWidth, height: targetHeight, rgba: out };
+}
+
+/**
+ * Resize with "contain" strategy:
+ * - keep aspect ratio
+ * - fit inside (targetWidth, targetHeight) without cropping
+ * - pad with white
+ */
+function resizeImageContain(
+  rgba: Uint8Array,
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number
+): { width: number; height: number; rgba: Uint8Array } {
+  const scale = Math.min(targetWidth / Math.max(1, sourceWidth), targetHeight / Math.max(1, sourceHeight));
+  const fittedWidth = Math.max(1, Math.floor(sourceWidth * scale));
+  const fittedHeight = Math.max(1, Math.floor(sourceHeight * scale));
+
+  const resized = resizeImageNearest(rgba, sourceWidth, sourceHeight, fittedWidth, fittedHeight);
+
+  const out = new Uint8Array(targetWidth * targetHeight * 4);
+  // White padding (alpha=255) so thermal output is blank after polarity handling.
+  out.fill(255);
+
+  const offsetX = Math.floor((targetWidth - fittedWidth) / 2);
+  const offsetY = Math.floor((targetHeight - fittedHeight) / 2);
+
+  for (let y = 0; y < fittedHeight; y++) {
+    for (let x = 0; x < fittedWidth; x++) {
+      const si = (y * fittedWidth + x) * 4;
+      const di = ((y + offsetY) * targetWidth + (x + offsetX)) * 4;
+      out[di] = resized.rgba[si] ?? 255;
+      out[di + 1] = resized.rgba[si + 1] ?? 255;
+      out[di + 2] = resized.rgba[si + 2] ?? 255;
+      out[di + 3] = resized.rgba[si + 3] ?? 255;
+    }
+  }
+
+  return { width: targetWidth, height: targetHeight, rgba: out };
+}
+
+/**
  * Convert grayscale → pure 1-bit bitmap.
  * Printer rule: thermal printers only print BLACK dots.
  *
@@ -137,8 +213,17 @@ export function processJpegBase64ToBitmap(
   } catch {
     decoded = decodeBase64Png(base64);
   }
-  const resized = resizeImage(decoded.rgba, decoded.width, decoded.height, 384);
-  const grayscale = toGrayscale(resized.rgba, resized.width, resized.height, true);
+
+  // Enforce the fixed printer ticket size (57mm x 63mm) before dithering.
+  // We derive an effective DPI from the existing printer bitmap width mapping:
+  // - current firmware bitmap width is `PRINT_WIDTH` (384px) for 57mm.
+  // - use the same dpi for height so our bitmap is always fully printable.
+  const printerEffectiveDpi = (PRINT_WIDTH * 25.4) / TICKET_WIDTH_MM;
+  const targetWidth = PRINT_WIDTH;
+  const targetHeight = Math.round((TICKET_HEIGHT_MM * printerEffectiveDpi) / 25.4); // == PRINT_WIDTH * TICKET_HEIGHT_MM / TICKET_WIDTH_MM
+
+  const contained = resizeImageContain(decoded.rgba, decoded.width, decoded.height, targetWidth, targetHeight);
+  const grayscale = toGrayscale(contained.rgba, contained.width, contained.height, true);
   return applyThreshold(grayscale, threshold);
 }
 
