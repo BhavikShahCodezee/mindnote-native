@@ -509,7 +509,6 @@ export default function SettingsScreen() {
   const [previewCenterY, setPreviewCenterY] = useState<number>(DEFAULT_SETTINGS.previewCenterY);
   const [previewRotationDeg, setPreviewRotationDeg] = useState<number>(DEFAULT_SETTINGS.previewRotationDeg);
   const [wrapBySpaces, setWrapBySpaces] = useState<boolean>(DEFAULT_SETTINGS.wrapBySpaces);
-  const [notesPrintType, setNotesPrintType] = useState<'text' | 'image'>(DEFAULT_SETTINGS.notesPrintType);
   const [previewText, setPreviewText] = useState('Sample print text');
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -523,7 +522,6 @@ export default function SettingsScreen() {
       setPreviewCenterY(settings.previewCenterY);
       setPreviewRotationDeg(settings.previewRotationDeg);
       setWrapBySpaces(settings.wrapBySpaces);
-      setNotesPrintType(settings.notesPrintType);
     })();
   }, []);
 
@@ -538,14 +536,14 @@ export default function SettingsScreen() {
         previewCenterY,
         previewRotationDeg,
         wrapBySpaces,
-        notesPrintType,
+        notesPrintType: 'image',
       });
     }, 500);
 
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [fontStyle, previewScale, previewCenterX, previewCenterY, previewRotationDeg, wrapBySpaces, notesPrintType]);
+  }, [fontStyle, previewScale, previewCenterX, previewCenterY, previewRotationDeg, wrapBySpaces]);
 
   const onSave = async () => {
     await saveAppSettings({
@@ -555,7 +553,7 @@ export default function SettingsScreen() {
       previewCenterY,
       previewRotationDeg,
       wrapBySpaces,
-      notesPrintType,
+      notesPrintType: 'image',
     });
     Alert.alert('Saved', 'Settings saved successfully');
   };
@@ -591,27 +589,6 @@ export default function SettingsScreen() {
                 <Text style={[styles.chipText, fontStyle === font && styles.chipTextActive]}>{font}</Text>
               </TouchableOpacity>
             ))}
-          </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Notes Print Type</Text>
-          <Text style={styles.previewHint}>
-            Choose how notes are rendered when you save/print.
-          </Text>
-          <View style={styles.rowWrap}>
-            <TouchableOpacity
-              style={[styles.chip, notesPrintType === 'text' && styles.chipActive]}
-              onPress={() => setNotesPrintType('text')}
-            >
-              <Text style={[styles.chipText, notesPrintType === 'text' && styles.chipTextActive]}>Print as Text</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.chip, notesPrintType === 'image' && styles.chipActive]}
-              onPress={() => setNotesPrintType('image')}
-            >
-              <Text style={[styles.chipText, notesPrintType === 'image' && styles.chipTextActive]}>Print Text as Image</Text>
-            </TouchableOpacity>
           </View>
         </View>
 

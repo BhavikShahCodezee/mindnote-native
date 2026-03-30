@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,14 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { captureRef } from 'react-native-view-shot';
+import { useTextToImage } from '@/hooks/useTextToImage';
+import {
+  computeTextToImageLayout,
+  fontFamilyForStyle,
+  TEXT_TO_IMAGE_CANVAS_H,
+  TEXT_TO_IMAGE_CANVAS_W,
+} from '@/src/utils/textToImage';
 import { ensureConnectedPrinter } from '@/src/bluetooth/ensureConnectedPrinter';
 import { loadNotes, upsertNote } from '@/src/storage/notes';
 import { getPrintService } from '@/src/services/printService';
@@ -33,6 +41,12 @@ function mergeContentForSave(title: string, body: string): string {
   return `${t}\n${b}`;
 }
 
+function extractBase64FromDataUri(dataUri: string): string {
+  const commaIdx = dataUri.indexOf(',');
+  if (commaIdx >= 0) return dataUri.slice(commaIdx + 1);
+  return dataUri;
+}
+
 export default function NoteEditorScreen() {
   const router = useRouter();
   const printService = getPrintService();
@@ -42,6 +56,13 @@ export default function NoteEditorScreen() {
   const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
   const [editedLabel, setEditedLabel] = useState('');
+
+  const captureRefView = useRef<View>(null);
+  const { settings, appearance, ready } = useTextToImage();
+
+  const contentForConversion = useMemo(() => mergeContentForSave(title, body).trim(), [title, body]);
+  const layout = useMemo(() => computeTextToImageLayout(contentForConversion || ' ', settings), [contentForConversion, settings]);
+  const fontFamily = useMemo(() => fontFamilyForStyle(settings.fontStyle), [settings.fontStyle]);
 
   useEffect(() => {
     (async () => {
@@ -73,7 +94,23 @@ export default function NoteEditorScreen() {
       await upsertNote({ id, content, updatedAt: now });
 
       const device = await ensureConnectedPrinter();
-      const result = await printService.printNote(content, device);
+      if (!ready) throw new Error('Text-to-image is still loading');
+      const ref = captureRefView.current;
+      if (!ref) throw new Error('Text-to-image capture view not ready');
+
+      // Ensure the hidden ticket view has updated with latest `title/body`.
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      const uri = await captureRef(ref, {
+        format: 'jpg',
+        quality: 1,
+        result: 'data-uri',
+      });
+
+      const base64 = typeof uri === 'string' ? extractBase64FromDataUri(uri) : '';
+      if (!base64 || base64.length < 32) throw new Error('Failed to convert note text to image');
+
+      const result = await printService.printImage('note.jpg', base64, device);
       if (!result.success) {
         throw result.error ?? new Error(result.message);
       }
@@ -84,7 +121,7 @@ export default function NoteEditorScreen() {
     } finally {
       setSaving(false);
     }
-  }, [body, noteId, printService, router, title]);
+  }, [body, noteId, printService, ready, router, title]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -139,6 +176,47 @@ export default function NoteEditorScreen() {
             editable={!saving}
           />
         </ScrollView>
+
+        {/* Off-screen ticket used to convert note text into an image for printing. */}
+        <View style={styles.hiddenHost} pointerEvents="none" collapsable={false}>
+          <View
+            ref={captureRefView}
+            collapsable={false}
+            style={[
+              styles.ticketCanvas,
+              {
+                width: TEXT_TO_IMAGE_CANVAS_W,
+                height: TEXT_TO_IMAGE_CANVAS_H,
+                backgroundColor: appearance.backgroundColor,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.labelBox,
+                {
+                  left: layout.labelLeft,
+                  top: layout.labelTop,
+                  width: layout.boxWidth,
+                  height: layout.labelMinHeight,
+                  transform: [{ rotate: `${layout.rotationDeg}deg` }],
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  fontSize: layout.fontSize,
+                  lineHeight: layout.lineHeight,
+                  fontFamily,
+                  color: appearance.textColor,
+                  textAlign: 'center',
+                }}
+              >
+                {layout.lines.join('\n')}
+              </Text>
+            </View>
+          </View>
+        </View>
 
         <View style={styles.bottomBar}>
           <TouchableOpacity style={styles.bottomIcon} disabled accessibilityLabel="Add (coming soon)">
@@ -226,4 +304,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   bottomSpacer: { width: 0 },
+  hiddenHost: {
+    position: 'absolute',
+    left: -10000,
+    top: 0,
+    width: TEXT_TO_IMAGE_CANVAS_W,
+    height: TEXT_TO_IMAGE_CANVAS_H,
+    overflow: 'hidden',
+  },
+  ticketCanvas: {
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  labelBox: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

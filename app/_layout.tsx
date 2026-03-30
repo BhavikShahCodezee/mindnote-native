@@ -19,7 +19,6 @@ export default function RootLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: true }}>
         <Stack.Screen name="index" options={{ title: 'Home' }} />
-        <Stack.Screen name="text-to-image" options={{ headerShown: false, title: 'Text → Image' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="notes" options={{ headerShown: false }} />
         <Stack.Screen name="note-editor" options={{ headerShown: false }} />

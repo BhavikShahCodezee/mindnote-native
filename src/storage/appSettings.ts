@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   previewCenterY: 0.5,
   previewRotationDeg: 0,
   wrapBySpaces: true,
-  notesPrintType: 'text',
+  notesPrintType: 'image',
 };
 
 function clamp01(n: number): number {
@@ -59,7 +59,8 @@ function normalizePartial(parsed: Partial<AppSettings>): AppSettings {
       ? parsed.previewRotationDeg!
       : DEFAULT_SETTINGS.previewRotationDeg,
     wrapBySpaces: parsed.wrapBySpaces ?? DEFAULT_SETTINGS.wrapBySpaces,
-    notesPrintType: parsed.notesPrintType ?? DEFAULT_SETTINGS.notesPrintType,
+    // System-wide rule: always print text notes as images.
+    notesPrintType: 'image',
   };
 }
 

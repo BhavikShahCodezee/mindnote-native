@@ -18,7 +18,7 @@ import {
   fontSizeForPrint,
   loadAppSettings,
 } from '@/src/storage/appSettings';
-import { printTextAsImageDirect, printTextDirect } from '@/src/text/textPrintService';
+import { printTextAsImageDirect } from '@/src/text/textPrintService';
 
 /**
  * Print configuration options (Cat-Printer–style)
@@ -64,7 +64,7 @@ export class PrintService {
   async printText(text: string, device?: Device | null): Promise<PrintResult> {
     try {
       const { settings, energy } = await this.getCurrentPrintConfig();
-      return await printTextDirect({
+      return await printTextAsImageDirect({
         text,
         fontSize: fontSizeForPrint(settings),
         fontStyle: settings.fontStyle,
@@ -101,12 +101,8 @@ export class PrintService {
         previewRotationDeg: settings.previewRotationDeg,
         previewScale: settings.previewScale,
       };
-
-      if (settings.notesPrintType === 'image') {
-        return await printTextAsImageDirect(opts);
-      }
-
-      return await printTextDirect(opts);
+      // System-wide rule: always print notes as images.
+      return await printTextAsImageDirect(opts);
     } catch (error) {
       return {
         success: false,
