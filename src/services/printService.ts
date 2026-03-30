@@ -16,11 +16,9 @@ import { processJpegBase64ToBitmap } from '@/src/utils/imageProcessor';
 import type { AppSettings } from '@/src/storage/appSettings';
 import {
   fontSizeForPrint,
-  horizontalAlignForPrint,
   loadAppSettings,
 } from '@/src/storage/appSettings';
-import { printTextDirect } from '@/src/text/textPrintService';
-import { logDebug } from '@/src/debug/logDebug';
+import { printTextAsImageDirect, printTextDirect } from '@/src/text/textPrintService';
 
 /**
  * Print configuration options (Cat-Printer–style)
@@ -66,22 +64,49 @@ export class PrintService {
   async printText(text: string, device?: Device | null): Promise<PrintResult> {
     try {
       const { settings, energy } = await this.getCurrentPrintConfig();
-      console.log('Font Config:', {
-        fontStyle: settings.fontStyle,
-        fontSize: fontSizeForPrint(settings),
-        align: horizontalAlignForPrint(settings),
-        wrapBySpaces: settings.wrapBySpaces,
-      });
-      const result = await printTextDirect({
+      return await printTextDirect({
         text,
         fontSize: fontSizeForPrint(settings),
         fontStyle: settings.fontStyle,
-        align: horizontalAlignForPrint(settings),
         wrapBySpaces: settings.wrapBySpaces,
         energy,
         device,
+        previewCenterX: settings.previewCenterX,
+        previewCenterY: settings.previewCenterY,
+        previewRotationDeg: settings.previewRotationDeg,
+        previewScale: settings.previewScale,
       });
-      return result;
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
+    }
+  }
+
+  async printNote(text: string, device?: Device | null): Promise<PrintResult> {
+    try {
+      const { settings, energy } = await this.getCurrentPrintConfig();
+
+      const opts = {
+        text,
+        fontSize: fontSizeForPrint(settings),
+        fontStyle: settings.fontStyle,
+        wrapBySpaces: settings.wrapBySpaces,
+        energy,
+        device,
+        previewCenterX: settings.previewCenterX,
+        previewCenterY: settings.previewCenterY,
+        previewRotationDeg: settings.previewRotationDeg,
+        previewScale: settings.previewScale,
+      };
+
+      if (settings.notesPrintType === 'image') {
+        return await printTextAsImageDirect(opts);
+      }
+
+      return await printTextDirect(opts);
     } catch (error) {
       return {
         success: false,
@@ -109,35 +134,17 @@ export class PrintService {
    */
   async print(options: PrintOptions): Promise<PrintResult> {
     const {
-      imageUri,
       imageBase64,
-      algorithm = 'floyd-steinberg',
       deviceName,
       device,
       showPreview = false,
     } = options;
 
     try {
-      console.log('🖨️ Starting print job...');
-      console.log(`   Image: ${imageUri}`);
-      console.log(`   Algorithm: ${algorithm}`);
       const forcedEnergy = 0xffff;
-      console.log(`   Energy: 0x${forcedEnergy.toString(16)}`);
-      const { settings } = await this.getCurrentPrintConfig();
-      console.log('Font Config:', {
-        fontStyle: settings.fontStyle,
-        fontSize: fontSizeForPrint(settings),
-        align: horizontalAlignForPrint(settings),
-        wrapBySpaces: settings.wrapBySpaces,
-      });
-      console.log('⏳ Processing image...');
       if (!imageBase64) throw new Error('Missing image base64 payload for processing');
 
-      logDebug('Print started: image');
-      logDebug(`Image processing started uri=${imageUri}`);
-
       const binaryImage = processJpegBase64ToBitmap(imageBase64);
-      logDebug(`Image processed. rows=${binaryImage.length}`);
 
       // Cat-Printer firmware expects bitmap bits in a specific polarity.
       // The wasm `monoToPbm` step XORs packed bits (equivalent to complementing the mono bitmap),
@@ -149,11 +156,6 @@ export class PrintService {
         .reverse()
         // Fix horizontal mirroring: mirror each row before packing bytes.
         .map((row) => row.slice().reverse().map((p) => !p));
-      const blackPixels = binaryForPrinter.reduce(
-        (sum, row) => sum + row.reduce((s, p) => s + (p ? 1 : 0), 0),
-        0
-      );
-      logDebug(`Bitmap generated (flipped+complemented). rows=${binaryForPrinter.length} blackPixels=${blackPixels}`);
       if (binaryForPrinter.length === 0) throw new Error('Image bitmap is empty');
       
       const imageSize = {
@@ -161,26 +163,17 @@ export class PrintService {
         width: binaryForPrinter[0]?.length || 0,
       };
       
-      console.log(`✅ Image processed: ${imageSize.height}x${imageSize.width} pixels`);
-      
       // Step 2: Show preview if requested
       if (showPreview) {
         // TODO: Implement preview functionality
-        console.log('ℹ️  Preview requested (not yet implemented)');
       }
-      
-      console.log('⏳ Generating printer commands...');
       const quality = getQuality();
       const modelName = device?.name ?? deviceName;
       const commandData = cmdsPrintImg(binaryForPrinter, forcedEnergy, quality, modelName);
-      console.log(`✅ Generated ${commandData.length} bytes of commands`);
-      console.log(`   Command preview: ${Array.from(commandData.slice(0, 24)).map((b) => b.toString(16).padStart(2, '0')).join(' ')} ...`);
       
       const printerService = getPrinterService();
       if (getDryRun()) {
-        console.log(' Dry run: skipping BLE send');
       } else {
-        console.log('⏳ Sending to printer...');
         if (device) {
           if (!printerService.isConnected() || printerService.getConnectedDevice()?.id !== device.id) {
             await printerService.disconnect();
@@ -191,9 +184,6 @@ export class PrintService {
           await printerService.print(commandData, deviceName);
         }
       }
-      
-      console.log('✅ Print job completed successfully!');
-      
       return {
         success: true,
         message: 'Print completed successfully',
@@ -202,7 +192,6 @@ export class PrintService {
       };
       
     } catch (error) {
-      console.error('🛑 Print job failed:', error);
       
       return {
         success: false,

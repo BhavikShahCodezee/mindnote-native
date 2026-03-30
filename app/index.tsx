@@ -1,6 +1,5 @@
 import { ensureConnectedPrinter } from '@/src/bluetooth/ensureConnectedPrinter';
 import { getPrinterService } from '@/src/bluetooth/printerService';
-import { logDebug } from '@/src/debug/logDebug';
 import { getPrintService } from '@/src/services/printService';
 import { clearSavedPrinter, loadSavedPrinter, savePrinter } from '@/src/storage/savedPrinter';
 import * as ImagePicker from 'expo-image-picker';
@@ -99,8 +98,6 @@ export default function HomeScreen() {
       if (!base64) {
         throw new Error('Selected image has no base64 payload');
       }
-      logDebug(`Image selected uri=${uri}`);
-      logDebug(`Image base64 length=${base64.length}`);
       const device = await ensureConnectedPrinter();
       const printResult = await printService.printImage(uri, base64, device);
       if (printResult.success) {

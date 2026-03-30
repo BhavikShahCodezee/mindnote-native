@@ -5,7 +5,6 @@ import { useFonts } from 'expo-font';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { DebugPopupProvider } from '@/src/debug/DebugPopupProvider';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -18,16 +17,14 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <DebugPopupProvider>
-        <Stack screenOptions={{ headerShown: true }}>
-          <Stack.Screen name="index" options={{ title: 'Home' }} />
-          <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-          <Stack.Screen name="notes" options={{ title: 'Notes' }} />
-          <Stack.Screen name="note-editor" options={{ title: 'Edit Note' }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </DebugPopupProvider>
+      <Stack screenOptions={{ headerShown: true }}>
+        <Stack.Screen name="index" options={{ title: 'Home' }} />
+        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="notes" options={{ headerShown: false }} />
+        <Stack.Screen name="note-editor" options={{ headerShown: false }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+      </Stack>
+      <StatusBar style="auto" />
     </ThemeProvider>
   );
 }

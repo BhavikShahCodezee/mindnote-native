@@ -133,7 +133,6 @@ export class PrinterService {
       );
     }
     
-    console.log('✅ BLE Manager initialized');
   }
 
   private async requestAndroidBlePermissions(): Promise<void> {
@@ -243,7 +242,6 @@ export class PrinterService {
           if (isMatch) {
             clearTimeout(timeout);
             this.bleManager!.stopDeviceScan();
-            console.log(`✅ Found printer: ${device.name || device.id}`);
             resolve(device);
           }
         }
@@ -257,16 +255,11 @@ export class PrinterService {
    * @param device - Device to connect to
    */
   async connect(device: Device): Promise<void> {
-    console.log(`⏳ Connecting to ${device.name || device.id}...`);
-    
     this.connectedDevice = await device.connect();
     await this.connectedDevice.discoverAllServicesAndCharacteristics();
     
-    const mtu = await this.connectedDevice.requestMTU(512);
+    await this.connectedDevice.requestMTU(512);
     
-    console.log(
-      `✅ Connected: ${this.connectedDevice.isConnected}; MTU: ${mtu}`
-    );
   }
   
   /**
@@ -290,7 +283,6 @@ export class PrinterService {
     if (this.connectedDevice) {
       await this.connectedDevice.cancelConnection();
       this.connectedDevice = null;
-      console.log('✅ Disconnected from printer');
     }
   }
   
@@ -366,15 +358,12 @@ export class PrinterService {
    * Wait for printer to be ready
    */
   private async waitForPrinterReady(): Promise<void> {
-    console.log('⏳ Done printing. Waiting for printer to be ready...');
-    
     const startTime = Date.now();
     
     return new Promise((resolve, reject) => {
       const checkInterval = setInterval(() => {
         if (this.isPrinterReady) {
           clearInterval(checkInterval);
-          console.log('✅ Printer is ready');
           resolve();
         } else if (Date.now() - startTime > WAIT_FOR_PRINTER_DONE_TIMEOUT_MS) {
           clearInterval(checkInterval);
@@ -420,10 +409,6 @@ export class PrinterService {
     const mtu = updatedDevice.mtu ?? 512;
     const chunkSize = mtu - 3;
     
-    console.log(
-      `⏳ Sending ${data.length} bytes of data in chunks of ${chunkSize} bytes...`
-    );
-    
     // Convert to Buffer if needed
     const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
     
@@ -453,8 +438,6 @@ export class PrinterService {
         setTimeout(resolve, WAIT_AFTER_EACH_CHUNK_MS)
       );
     }
-    
-    console.log('✅ Data sent successfully');
     
     // Wait for printer to finish
     await this.waitForPrinterReady();

@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import { ensureConnectedPrinter } from '@/src/bluetooth/ensureConnectedPrinter';
-import { loadAppSettings } from '@/src/storage/appSettings';
 import { loadNotes, upsertNote } from '@/src/storage/notes';
 import { getPrintService } from '@/src/services/printService';
 
@@ -10,37 +20,50 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function splitContentForDisplay(content: string): { title: string; body: string } {
+  const idx = content.indexOf('\n');
+  if (idx === -1) return { title: '', body: content };
+  return { title: content.slice(0, idx), body: content.slice(idx + 1) };
+}
+
+function mergeContentForSave(title: string, body: string): string {
+  const t = title.trim();
+  const b = body;
+  if (!t) return b;
+  return `${t}\n${b}`;
+}
+
 export default function NoteEditorScreen() {
   const router = useRouter();
   const printService = getPrintService();
   const params = useLocalSearchParams<{ id?: string }>();
   const noteId = params.id;
-  const [value, setValue] = useState('');
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
   const [saving, setSaving] = useState(false);
-  const [fontFamily, setFontFamily] = useState<'System' | 'Excalifont' | 'ShadowsIntoLight'>('System');
+  const [editedLabel, setEditedLabel] = useState('');
 
   useEffect(() => {
     (async () => {
-      const settings = await loadAppSettings();
-      setFontFamily(settings.fontStyle);
-      if (noteId) {
-        const notes = await loadNotes();
-        const note = notes.find((n) => n.id === noteId);
-        if (note) setValue(note.content);
+      if (!noteId) {
+        setEditedLabel(formatEditedTime(Date.now()));
+        return;
+      }
+      const notes = await loadNotes();
+      const note = notes.find((n) => n.id === noteId);
+      if (note) {
+        const { title: t, body: b } = splitContentForDisplay(note.content);
+        setTitle(t);
+        setBody(b);
+        setEditedLabel(formatEditedTime(note.updatedAt));
       }
     })();
   }, [noteId]);
 
-  const resolvedFont = useMemo(() => {
-    if (fontFamily === 'Excalifont') return 'Excalifont';
-    if (fontFamily === 'ShadowsIntoLight') return 'ShadowsIntoLight';
-    return undefined;
-  }, [fontFamily]);
-
-  const onSave = async () => {
-    const content = value.trim();
+  const handleBack = useCallback(async () => {
+    const content = mergeContentForSave(title, body).trim();
     if (!content) {
-      Alert.alert('Empty note', 'Please write note text first.');
+      router.back();
       return;
     }
     setSaving(true);
@@ -50,85 +73,157 @@ export default function NoteEditorScreen() {
       await upsertNote({ id, content, updatedAt: now });
 
       const device = await ensureConnectedPrinter();
-      const result = await printService.printText(content, device);
+      const result = await printService.printNote(content, device);
       if (!result.success) {
         throw result.error ?? new Error(result.message);
       }
-      Alert.alert('Saved & Printed', 'Note saved and sent to printer.', [
-        { text: 'OK', onPress: () => router.replace('/notes' as never) },
-      ]);
+      setEditedLabel(formatEditedTime(now));
+      router.replace('/notes' as never);
     } catch (e) {
       Alert.alert('Save/Print failed', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setSaving(false);
     }
-  };
+  }, [body, noteId, printService, router, title]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.topBar}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.saveButton, saving && styles.buttonDisabled]} onPress={onSave} disabled={saving}>
-          <Text style={styles.saveText}>{saving ? 'Saving...' : 'Save'}</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.root}>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.iconBtn}
+            onPress={handleBack}
+            disabled={saving}
+            accessibilityLabel="Back and save"
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={COLORS.text} />
+            ) : (
+              <MaterialIcons name="arrow-back" size={24} color={COLORS.text} />
+            )}
+          </TouchableOpacity>
+          <View style={styles.topBarRight}>
+            <TouchableOpacity style={styles.iconBtn} disabled accessibilityLabel="Pin (coming soon)">
+              <MaterialIcons name="push-pin" size={22} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn} disabled accessibilityLabel="Reminder (coming soon)">
+              <MaterialIcons name="add-alert" size={22} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconBtn} disabled accessibilityLabel="Archive (coming soon)">
+              <MaterialIcons name="archive" size={22} color={COLORS.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <TextInput
+            style={styles.titleInput}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Title"
+            placeholderTextColor={COLORS.textMuted}
+            editable={!saving}
+          />
+          <TextInput
+            multiline
+            style={styles.bodyInput}
+            value={body}
+            onChangeText={setBody}
+            placeholder="Note"
+            placeholderTextColor={COLORS.textMuted}
+            textAlignVertical="top"
+            editable={!saving}
+          />
+        </ScrollView>
+
+        <View style={styles.bottomBar}>
+          <TouchableOpacity style={styles.bottomIcon} disabled accessibilityLabel="Add (coming soon)">
+            <MaterialIcons name="add-box" size={24} color={COLORS.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bottomIcon} disabled accessibilityLabel="Background (coming soon)">
+            <MaterialIcons name="palette" size={24} color={COLORS.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.bottomIcon} disabled accessibilityLabel="Format (coming soon)">
+            <MaterialIcons name="text-fields" size={24} color={COLORS.textMuted} />
+          </TouchableOpacity>
+          <Text style={styles.editedText}>{editedLabel}</Text>
+          <View style={styles.bottomSpacer} />
+          <TouchableOpacity style={styles.bottomIcon} disabled accessibilityLabel="More (coming soon)">
+            <MaterialIcons name="more-vert" size={24} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.card}>
-        <Text style={styles.label}>Here Text Note..</Text>
-        <TextInput
-          multiline
-          style={[styles.input, resolvedFont ? { fontFamily: resolvedFont } : undefined]}
-          value={value}
-          onChangeText={setValue}
-          placeholder="Write your note..."
-          textAlignVertical="top"
-          editable={!saving}
-        />
-      </View>
-    </ScrollView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flexGrow: 1, backgroundColor: '#f6f8fc', padding: 16, gap: 14 },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  backButton: {
-    backgroundColor: '#e9edf4',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-  },
-  backText: { color: '#1f2937', fontWeight: '700', fontSize: 16 },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-    gap: 10,
-  },
-  label: { fontWeight: '700', color: '#1f2937' },
-  input: {
-    minHeight: 220,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 18,
-    color: '#111827',
-  },
-  saveButton: {
-    backgroundColor: '#0a7ea4',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-  },
-  saveText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  buttonDisabled: { opacity: 0.6 },
-});
+function formatEditedTime(ts: number): string {
+  const d = new Date(ts);
+  return `Edited ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+}
 
+const COLORS = {
+  bg: '#202124',
+  text: '#e8eaed',
+  textMuted: '#9aa0a6',
+};
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: COLORS.bg },
+  root: { flex: 1 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  topBarRight: { flexDirection: 'row', alignItems: 'center' },
+  iconBtn: { padding: 10 },
+  scrollContent: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 100,
+  },
+  titleInput: {
+    fontSize: 22,
+    fontWeight: '500',
+    color: COLORS.text,
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  bodyInput: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: COLORS.text,
+    minHeight: 320,
+    paddingTop: 4,
+  },
+  bottomBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    paddingBottom: 28,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#3c4043',
+    backgroundColor: COLORS.bg,
+  },
+  bottomIcon: { padding: 8 },
+  editedText: {
+    flex: 1,
+    textAlign: 'center',
+    color: COLORS.textMuted,
+    fontSize: 12,
+  },
+  bottomSpacer: { width: 0 },
+});

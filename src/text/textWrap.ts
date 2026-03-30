@@ -4,15 +4,15 @@
  * Cat-Printer style: wrap by space when enabled, else break anywhere.
  */
 
-const PRINTER_WIDTH = 384;
-
 /**
  * Approximate chars that fit in one line for a given font size.
  */
-function maxCharsPerLine(fontSize: number): number {
+function maxCharsPerLine(fontSize: number, containerWidthPx: number): number {
   const charWidth = fontSize * 0.55;
-  return Math.max(1, Math.floor(PRINTER_WIDTH / charWidth));
+  return Math.max(1, Math.floor(containerWidthPx / Math.max(1e-6, charWidth)));
 }
+
+export const TEXT_PRINT_WIDTH = 384;
 
 /**
  * Split text into lines that fit the printer width.
@@ -23,9 +23,10 @@ function maxCharsPerLine(fontSize: number): number {
 export function wrapTextToLines(
   text: string,
   fontSize: number,
-  wrapBySpaces: boolean
+  wrapBySpaces: boolean,
+  containerWidthPx: number = TEXT_PRINT_WIDTH
 ): string[] {
-  const maxLen = maxCharsPerLine(fontSize);
+  const maxLen = maxCharsPerLine(fontSize, containerWidthPx);
   const lines: string[] = [];
 
   const wrapLine = (line: string): string[] => {
@@ -52,5 +53,3 @@ export function wrapTextToLines(
   }
   return lines.filter((l) => l.length > 0);
 }
-
-export { PRINTER_WIDTH as TEXT_PRINT_WIDTH };

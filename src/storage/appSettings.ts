@@ -22,6 +22,9 @@ export interface AppSettings {
   previewRotationDeg: number;
   /** Kept for printing; no longer exposed in Settings UI (defaults to true). */
   wrapBySpaces: boolean;
+
+  /** How notes should be printed when saving. */
+  notesPrintType: 'text' | 'image';
 }
 
 const SETTINGS_KEY_V3 = 'mos:settings:v3';
@@ -35,6 +38,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   previewCenterY: 0.5,
   previewRotationDeg: 0,
   wrapBySpaces: true,
+  notesPrintType: 'text',
 };
 
 function clamp01(n: number): number {
@@ -55,6 +59,7 @@ function normalizePartial(parsed: Partial<AppSettings>): AppSettings {
       ? parsed.previewRotationDeg!
       : DEFAULT_SETTINGS.previewRotationDeg,
     wrapBySpaces: parsed.wrapBySpaces ?? DEFAULT_SETTINGS.wrapBySpaces,
+    notesPrintType: parsed.notesPrintType ?? DEFAULT_SETTINGS.notesPrintType,
   };
 }
 

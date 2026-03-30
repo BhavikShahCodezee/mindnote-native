@@ -144,10 +144,17 @@ function LabelPreviewCanvas({
   const rotateStartRef = useRef({ angle: 0, rotation: 0 });
 
   const lineHeight = useMemo(
-    () => Math.max(1, BASE_PREVIEW_FONT_PX * previewScale * LINE_HEIGHT_MULTIPLIER),
+    () => {
+      const raw = Math.round(BASE_PREVIEW_FONT_PX * clampPreviewScale(previewScale));
+      const clamped = Math.max(12, Math.min(32, raw));
+      return Math.max(1, clamped * LINE_HEIGHT_MULTIPLIER);
+    },
     [previewScale]
   );
-  const fontSize = BASE_PREVIEW_FONT_PX * previewScale;
+  const fontSize = useMemo(() => {
+    const raw = Math.round(BASE_PREVIEW_FONT_PX * clampPreviewScale(previewScale));
+    return Math.max(12, Math.min(32, raw));
+  }, [previewScale]);
   const boxWidth = useMemo(() => {
     const scaled = BASE_BOX_WIDTH * previewScale;
     return Math.max(MIN_BOX_WIDTH, Math.min(innerSize.w, scaled));
@@ -419,6 +426,7 @@ function LabelPreviewCanvas({
             <View style={styles.moveArea} />
           </GestureDetector>
             <Text
+              pointerEvents="none"
               onLayout={(ev) => {
                 const { width, height } = ev.nativeEvent.layout;
                 setTextLayout({ w: width, h: height });
@@ -435,7 +443,16 @@ function LabelPreviewCanvas({
             >
               {previewText || 'Preview'}
             </Text>
-            <Text style={[styles.moveCursorHint, activeHandle === 'move' && styles.moveCursorHintActive]}>
+            {/* Explicit move handle (affordance). Dragging anywhere on the text also works. */}
+            <GestureDetector gesture={moveGesture}>
+              <View style={styles.moveHandleTouch} accessibilityLabel="Move text">
+                <View style={styles.moveHandleCircle} />
+              </View>
+            </GestureDetector>
+            <Text
+              pointerEvents="none"
+              style={[styles.moveCursorHint, activeHandle === 'move' && styles.moveCursorHintActive]}
+            >
               ✥
             </Text>
 
@@ -497,7 +514,10 @@ export default function SettingsScreen() {
   const [previewCenterY, setPreviewCenterY] = useState<number>(DEFAULT_SETTINGS.previewCenterY);
   const [previewRotationDeg, setPreviewRotationDeg] = useState<number>(DEFAULT_SETTINGS.previewRotationDeg);
   const [wrapBySpaces, setWrapBySpaces] = useState<boolean>(DEFAULT_SETTINGS.wrapBySpaces);
+  const [notesPrintType, setNotesPrintType] = useState<'text' | 'image'>(DEFAULT_SETTINGS.notesPrintType);
   const [previewText, setPreviewText] = useState('Sample print text');
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -508,8 +528,29 @@ export default function SettingsScreen() {
       setPreviewCenterY(settings.previewCenterY);
       setPreviewRotationDeg(settings.previewRotationDeg);
       setWrapBySpaces(settings.wrapBySpaces);
+      setNotesPrintType(settings.notesPrintType);
     })();
   }, []);
+
+  // Persist settings automatically so Notes printing always matches the preview.
+  useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      await saveAppSettings({
+        fontStyle,
+        previewScale,
+        previewCenterX,
+        previewCenterY,
+        previewRotationDeg,
+        wrapBySpaces,
+        notesPrintType,
+      });
+    }, 500);
+
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [fontStyle, previewScale, previewCenterX, previewCenterY, previewRotationDeg, wrapBySpaces, notesPrintType]);
 
   const onSave = async () => {
     await saveAppSettings({
@@ -519,6 +560,7 @@ export default function SettingsScreen() {
       previewCenterY,
       previewRotationDeg,
       wrapBySpaces,
+      notesPrintType,
     });
     Alert.alert('Saved', 'Settings saved successfully');
   };
@@ -554,6 +596,27 @@ export default function SettingsScreen() {
                 <Text style={[styles.chipText, fontStyle === font && styles.chipTextActive]}>{font}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Notes Print Type</Text>
+          <Text style={styles.previewHint}>
+            Choose how notes are rendered when you save/print.
+          </Text>
+          <View style={styles.rowWrap}>
+            <TouchableOpacity
+              style={[styles.chip, notesPrintType === 'text' && styles.chipActive]}
+              onPress={() => setNotesPrintType('text')}
+            >
+              <Text style={[styles.chipText, notesPrintType === 'text' && styles.chipTextActive]}>Print as Text</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.chip, notesPrintType === 'image' && styles.chipActive]}
+              onPress={() => setNotesPrintType('image')}
+            >
+              <Text style={[styles.chipText, notesPrintType === 'image' && styles.chipTextActive]}>Print Text as Image</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -750,6 +813,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#0a7ea4',
     fontWeight: '700',
+  },
+  moveHandleTouch: {
+    position: 'absolute',
+    bottom: -18,
+    left: '50%',
+    marginLeft: -HANDLE_HIT / 2,
+    width: HANDLE_HIT,
+    height: HANDLE_HIT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moveHandleCircle: {
+    width: HANDLE_VIS,
+    height: HANDLE_VIS,
+    borderRadius: HANDLE_VIS / 2,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#0a7ea4',
   },
   moveCursorHint: {
     position: 'absolute',
