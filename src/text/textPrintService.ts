@@ -6,9 +6,10 @@ import { wrapTextToLines } from './textWrap';
 import type { FontStyleKey } from '@/src/storage/appSettings';
 import { BASE_PREVIEW_FONT_PX } from '@/src/storage/appSettings';
 import { SETTINGS_PREVIEW_HEIGHT_PX, SETTINGS_PREVIEW_WIDTH_PX, TICKET_HEIGHT_MM, TICKET_WIDTH_MM } from '@/constants/printTicket';
+import { Canvas } from 'react-native-canvas';
+import { processJpegBase64ToBitmap } from '@/src/utils/imageProcessor';
 
 type BinaryImage = boolean[][];
-type GrayscaleImage = number[][];
 
 const PREVIEW_PADDING_PX = 12;
 const BASE_BOX_WIDTH = 140;
@@ -95,74 +96,6 @@ function glyphFor(ch: string): number[] {
   return FONT_5X7[upper] ?? FONT_5X7[ch] ?? FONT_5X7['?'];
 }
 
-function createGrayscaleTextBox(
-  text: string,
-  fontSize: number,
-  fontStyle: FontStyleKey,
-  wrapBySpaces: boolean,
-  containerWidthPx: number
-): GrayscaleImage {
-  const styleScale =
-    fontStyle === 'Excalifont' ? 1.08 : fontStyle === 'ShadowsIntoLight' ? 1.15 : 1;
-  const scale = Math.max(1, Math.round((fontSize * styleScale) / 12));
-  const glyphWidth = 5 * scale;
-  const glyphHeight = 7 * scale;
-  const styleLetterSpacing =
-    fontStyle === 'Excalifont' ? 2 : fontStyle === 'ShadowsIntoLight' ? 3 : 1;
-  const styleLineSpacing =
-    fontStyle === 'Excalifont' ? 2 : fontStyle === 'ShadowsIntoLight' ? 3 : 2;
-  const letterSpacing = styleLetterSpacing * scale;
-  const lineSpacing = styleLineSpacing * scale;
-  const charAdvance = glyphWidth + letterSpacing;
-  const lineHeight = glyphHeight + lineSpacing;
-
-  const lines = wrapTextToLines(text, fontSize, wrapBySpaces, containerWidthPx);
-  const safeLines = lines.length ? lines : [' '];
-  const height = Math.max(1, safeLines.length * lineHeight);
-  const image: GrayscaleImage = Array.from({ length: height }, () => Array(containerWidthPx).fill(255));
-
-  const linePixelWidth = (line: string) => Math.max(0, line.length * charAdvance - letterSpacing);
-
-  // Settings preview uses `textAlign: 'center'`.
-  const xStart = (line: string): number => {
-    const w = linePixelWidth(line);
-    return Math.max(0, Math.floor((containerWidthPx - w) / 2));
-  };
-
-  safeLines.forEach((line, lineIdx) => {
-    const y0 = lineIdx * lineHeight;
-    let x = xStart(line);
-    for (const ch of line) {
-      const glyph = glyphFor(ch);
-      for (let gy = 0; gy < 7; gy++) {
-        const rowBits = glyph[gy] ?? 0;
-        const slantOffset =
-          fontStyle === 'ShadowsIntoLight'
-            ? Math.floor((6 - gy) * 0.6 * scale)
-            : fontStyle === 'Excalifont'
-              ? Math.floor((6 - gy) * 0.3 * scale)
-              : 0;
-        for (let gx = 0; gx < 5; gx++) {
-          if (((rowBits >> (4 - gx)) & 1) !== 1) continue;
-          for (let sy = 0; sy < scale; sy++) {
-            for (let sx = 0; sx < scale; sx++) {
-              const py = y0 + gy * scale + sy;
-              const px = x + gx * scale + sx + slantOffset;
-              if (py >= 0 && py < image.length && px >= 0 && px < containerWidthPx) {
-                image[py][px] = 0; // black
-              }
-            }
-          }
-        }
-      }
-      x += charAdvance;
-      if (x >= containerWidthPx) break;
-    }
-  });
-
-  return image;
-}
-
 function createTextBoxMono(
   text: string,
   fontSize: number,
@@ -228,11 +161,6 @@ function createTextBoxMono(
   });
 
   return image;
-}
-
-function grayscaleToMonochrome(img: GrayscaleImage, threshold = 127): BinaryImage {
-  // true = black pixel in our command generator path
-  return img.map((row) => row.map((g) => g < threshold));
 }
 
 function rotateMonoIntoTicket(
@@ -369,45 +297,194 @@ export async function printTextAsImageDirect(options: TextPrintOptions): Promise
     previewCenterX = 0.5,
     previewCenterY = 0.5,
     previewRotationDeg = 0,
-    previewScale,
   } = options;
 
   try {
     const activeDevice = await ensureWritableConnectedDevice(device);
 
-    const effectivePreviewScale = previewScale ?? Math.max(0.001, fontSize / BASE_PREVIEW_FONT_PX);
+    const fontFamily =
+      fontStyle === 'Excalifont'
+        ? 'Excalifont'
+        : fontStyle === 'ShadowsIntoLight'
+          ? 'ShadowsIntoLight'
+          : 'sans-serif';
 
-    const boxWidthPreviewPx = Math.max(
-      MIN_BOX_WIDTH,
-      Math.min(PREVIEW_INNER_W_PX, BASE_BOX_WIDTH * effectivePreviewScale)
-    );
-    const containerWidthPx = Math.max(1, Math.round((boxWidthPreviewPx * PRINT_WIDTH) / SETTINGS_PREVIEW_WIDTH_PX));
-
-    const grayscaleBox = createGrayscaleTextBox(text, fontSize, fontStyle, wrapBySpaces, containerWidthPx);
-    const boxMono = grayscaleToMonochrome(grayscaleBox, 127);
-
-    const ticketMono: BinaryImage = Array.from({ length: TICKET_HEIGHT_PX }, () =>
-      Array(PRINT_WIDTH).fill(false)
+    const maxWidthTicketPx = Math.max(
+      1,
+      Math.round((PREVIEW_INNER_W_PX * PRINT_WIDTH) / SETTINGS_PREVIEW_WIDTH_PX)
     );
 
+    // Render ticket canvas using real font glyphs, then print it via the existing image pipeline.
+    // This avoids brittle bitmap-font "text" printing and ensures "Print as Image" is truly an image.
+    const canvas = new Canvas(PRINT_WIDTH, TICKET_HEIGHT_PX);
+    canvas.width = PRINT_WIDTH;
+    canvas.height = TICKET_HEIGHT_PX;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2d context not available');
+
+    // Background (white paper).
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, PRINT_WIDTH, TICKET_HEIGHT_PX);
+
+    // Configure text rendering.
+    ctx.font = `700 ${fontSize}px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const paragraphs = text.replace(/\r\n/g, '\n').split('\n');
+    const safeMaxWidth = Math.max(1, maxWidthTicketPx);
+    const wrapLongWordByChars = (word: string): string[] => {
+      const parts: string[] = [];
+      let line = '';
+      for (const ch of word) {
+        const candidate = line + ch;
+        if (!line || ctx.measureText(candidate).width <= safeMaxWidth) {
+          line = candidate;
+        } else {
+          parts.push(line);
+          line = ch;
+        }
+      }
+      if (line) parts.push(line);
+      return parts;
+    };
+
+    const lines: string[] = [];
+    for (const para of paragraphs) {
+      const trimmed = para;
+      if (!trimmed) continue;
+
+      if (wrapBySpaces) {
+        const words = trimmed.split(' ').filter((w) => w.length > 0);
+        let line = '';
+
+        for (const word of words) {
+          const candidate = line ? `${line} ${word}` : word;
+          const candidateWidth = ctx.measureText(candidate).width;
+
+          if (candidateWidth <= safeMaxWidth) {
+            line = candidate;
+            continue;
+          }
+
+          if (line) {
+            lines.push(line.trim());
+            line = '';
+          }
+
+          if (ctx.measureText(word).width <= safeMaxWidth) {
+            line = word;
+          } else {
+            const parts = wrapLongWordByChars(word);
+            if (!parts.length) continue;
+            for (let i = 0; i < parts.length; i++) {
+              if (i < parts.length - 1) lines.push(parts[i]!.trim());
+              else line = parts[i] ?? '';
+            }
+          }
+        }
+
+        if (line.trim().length) lines.push(line.trim());
+      } else {
+        let line = '';
+        for (const ch of trimmed) {
+          const candidate = line + ch;
+          const candidateWidth = ctx.measureText(candidate).width;
+          if (!line || candidateWidth <= safeMaxWidth) {
+            line = candidate;
+          } else {
+            if (line.trim().length) lines.push(line.trim());
+            line = ch;
+          }
+        }
+        if (line.trim().length) lines.push(line.trim());
+      }
+    }
+
+    const safeLines = lines.length ? lines : [' '];
+
+    const lineHeight = Math.max(1, fontSize * 1.3);
+    const textBoxHeight = Math.max(lineHeight, safeLines.length * lineHeight);
+
+    // Position relative to preview normalized center.
     const previewCenterPxX = PREVIEW_PADDING_PX + previewCenterX * PREVIEW_INNER_W_PX;
     const previewCenterPxY = PREVIEW_PADDING_PX + previewCenterY * PREVIEW_INNER_H_PX;
     const ticketCenterX = (previewCenterPxX * PRINT_WIDTH) / SETTINGS_PREVIEW_WIDTH_PX;
     const ticketCenterY = (previewCenterPxY * TICKET_HEIGHT_PX) / SETTINGS_PREVIEW_HEIGHT_PX;
 
-    rotateMonoIntoTicket(boxMono, ticketMono, ticketCenterX, ticketCenterY, previewRotationDeg);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+    const rad = (previewRotationDeg * Math.PI) / 180;
 
-    const width = PRINT_WIDTH;
-    const height = ticketMono.length;
+    const canTransform = typeof ctx.translate === 'function' && typeof ctx.rotate === 'function';
+    if (canTransform) {
+      ctx.save();
+      ctx.translate(ticketCenterX, ticketCenterY);
+      ctx.rotate(rad);
+
+      const startY = -textBoxHeight / 2 + lineHeight / 2;
+      for (let i = 0; i < safeLines.length; i++) {
+        const y = startY + i * lineHeight;
+        ctx.fillText(safeLines[i]!, 0, y);
+      }
+      ctx.restore();
+    } else {
+      // Extremely limited canvas implementations: draw without rotation.
+      const startY = ticketCenterY - textBoxHeight / 2 + lineHeight / 2;
+      for (let i = 0; i < safeLines.length; i++) {
+        const y = startY + i * lineHeight;
+        ctx.fillText(safeLines[i]!, ticketCenterX, y);
+      }
+    }
+
+    const extractBase64FromDataUrl = (dataUrl: string): string => {
+      const commaIdx = dataUrl.indexOf(',');
+      if (commaIdx >= 0) return dataUrl.slice(commaIdx + 1);
+      return dataUrl;
+    };
+
+    // Convert canvas to base64 image (try multiple types for compatibility).
+    const tryTypes: { mime: string; quality?: number }[] = [
+      { mime: 'image/png' },
+      { mime: 'image/jpeg', quality: 0.92 },
+      { mime: '' },
+    ];
+
+    let lastErr: unknown = undefined;
+    let base64: string | null = null;
+    for (const t of tryTypes) {
+      try {
+        const dataUrl =
+          t.mime === '' ? await canvas.toDataURL() : await canvas.toDataURL(t.mime, t.quality);
+        const b64 = extractBase64FromDataUrl(dataUrl);
+        if (b64 && b64.length > 50) {
+          base64 = b64;
+          break;
+        }
+        throw new Error(`Empty/invalid base64 from canvas (${t.mime || 'default'})`);
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    if (!base64) {
+      throw new Error(
+        `Failed to rasterize text ticket to image: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`
+      );
+    }
+
+    const binaryImage = processJpegBase64ToBitmap(base64);
+    const binaryForPrinter = [...binaryImage]
+      .reverse()
+      .map((row) => row.slice().reverse().map((p) => !p));
 
     const quality = getQuality();
-    const commandData = cmdsPrintImg(ticketMono, energy, quality, activeDevice.name ?? undefined);
+    const commandData = cmdsPrintImg(binaryForPrinter, energy, quality, activeDevice.name ?? undefined);
     await getPrinterService().sendData(commandData);
 
     return {
       success: true,
       message: 'Text (as image) printed successfully',
-      imageSize: { width, height },
+      imageSize: { width: PRINT_WIDTH, height: binaryForPrinter.length },
       dataSize: commandData.length,
     };
   } catch (error) {

@@ -135,7 +135,10 @@ export async function saveAppSettings(settings: AppSettings): Promise<void> {
 /** Rasterized text print uses integer font size; derived from preview scale. */
 export function fontSizeForPrint(settings: AppSettings): number {
   const raw = Math.round(BASE_PREVIEW_FONT_PX * clampPreviewScale(settings.previewScale));
-  return Math.max(12, Math.min(32, raw));
+  // Allow larger preview scales to visibly impact font size.
+  // Printer ticket generation will clip if text doesn't fit, but we avoid a hard
+  // cap that makes the preview appear "stuck".
+  return Math.max(12, Math.min(60, raw));
 }
 
 /** Map preview horizontal placement to printer line alignment. */

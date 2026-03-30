@@ -214,7 +214,7 @@ export default function TextToImageScreen() {
                   left: layout.labelLeft,
                   top: layout.labelTop,
                   width: layout.boxWidth,
-                  minHeight: layout.labelMinHeight,
+                height: layout.labelMinHeight,
                   transform: [{ rotate: `${layout.rotationDeg}deg` }],
                 },
               ]}
@@ -226,7 +226,6 @@ export default function TextToImageScreen() {
                   fontFamily,
                   color: appearance.textColor,
                   textAlign: 'center',
-                  width: '100%',
                 }}
               >
                 {layout.lines.join('\n')}

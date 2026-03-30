@@ -27,8 +27,6 @@ const FONT_OPTIONS: FontStyleKey[] = ['System', 'Excalifont', 'ShadowsIntoLight'
 const PREVIEW_CANVAS_W = SETTINGS_PREVIEW_WIDTH_PX;
 const PREVIEW_CANVAS_H = SETTINGS_PREVIEW_HEIGHT_PX;
 const PREVIEW_PADDING = 12;
-const BASE_BOX_WIDTH = 140;
-const MIN_BOX_WIDTH = 40;
 const LINE_HEIGHT_MULTIPLIER = 1.3;
 
 type HandleKind = 'move' | 'rotate' | 'corner-tl' | 'corner-tr' | 'corner-bl' | 'corner-br' | null;
@@ -146,19 +144,15 @@ function LabelPreviewCanvas({
   const lineHeight = useMemo(
     () => {
       const raw = Math.round(BASE_PREVIEW_FONT_PX * clampPreviewScale(previewScale));
-      const clamped = Math.max(12, Math.min(32, raw));
+      const clamped = Math.max(12, Math.min(60, raw));
       return Math.max(1, clamped * LINE_HEIGHT_MULTIPLIER);
     },
     [previewScale]
   );
   const fontSize = useMemo(() => {
     const raw = Math.round(BASE_PREVIEW_FONT_PX * clampPreviewScale(previewScale));
-    return Math.max(12, Math.min(32, raw));
+    return Math.max(12, Math.min(60, raw));
   }, [previewScale]);
-  const boxWidth = useMemo(() => {
-    const scaled = BASE_BOX_WIDTH * previewScale;
-    return Math.max(MIN_BOX_WIDTH, Math.min(innerSize.w, scaled));
-  }, [innerSize.w, previewScale]);
 
   const refreshCanvasWindow = useCallback(() => {
     canvasRef.current?.measureInWindow((x, y, width, height) => {
@@ -209,8 +203,8 @@ function LabelPreviewCanvas({
       const curHx = Math.max(1, 0.5 * (Math.abs(w * Math.cos(rad)) + Math.abs(h * Math.sin(rad))));
       const curHy = Math.max(1, 0.5 * (Math.abs(w * Math.sin(rad)) + Math.abs(h * Math.cos(rad))));
       const boundaryMaxScale = scaleStartRef.current.scale * Math.max(0.1, Math.min(availX / curHx, availY / curHy));
-      const minScaleByWidth = MIN_BOX_WIDTH / BASE_BOX_WIDTH;
-      const minScale = Math.max(minScaleByWidth, 0.2);
+      // Minimum size floor; bounding box width/height should follow the real measured text.
+      const minScale = 0.2;
       const maxScale = Math.max(minScale, Math.min(boundaryMaxScale, 4));
       const { corner } = scaleStartRef.current;
       const sx = corner === 'tl' || corner === 'bl' ? -1 : 1;
@@ -415,8 +409,7 @@ function LabelPreviewCanvas({
             {
               left,
               top,
-              width: boxWidth,
-              minHeight: Math.max(textLayout.h, lineHeight),
+              // Do not manually set width/height. The dashed box must tightly wrap measured text.
               transform: [{ rotate: `${previewRotationDeg}deg` }],
             },
           ]}
@@ -438,6 +431,8 @@ function LabelPreviewCanvas({
                   lineHeight,
                   fontFamily: previewFontFamily,
                   textAlign: 'center',
+                  // Wrap naturally within the preview inner width; bounding box width becomes max line width.
+                  maxWidth: innerSize.w,
                 },
               ]}
             >
@@ -700,8 +695,6 @@ const styles = StyleSheet.create({
   },
   labelObject: {
     position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
     overflow: 'visible',
   },
   moveArea: {
@@ -717,8 +710,6 @@ const styles = StyleSheet.create({
   previewText: {
     color: '#2563eb',
     fontWeight: '700',
-    width: '100%',
-    flexShrink: 1,
     includeFontPadding: false,
   },
   handleSquare: {
