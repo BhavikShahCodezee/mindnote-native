@@ -13,6 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NoteItem, deleteNote, loadNotes } from '@/src/storage/notes';
+import { usePrinterStore } from '@/src/store/usePrinterStore';
 
 function notePreview(text: string): string {
   const clean = text.trim().replace(/\s+/g, ' ');
@@ -24,6 +25,7 @@ export default function NotesScreen() {
   const router = useRouter();
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const isConnected = usePrinterStore((s) => s.isConnected);
 
   const fetchNotes = useCallback(async () => {
     setRefreshing(true);
@@ -106,7 +108,11 @@ export default function NotesScreen() {
             <MaterialIcons name="view-module" size={22} color={COLORS.text} />
           </TouchableOpacity>
           <View style={styles.avatar}>
-            <MaterialIcons name="person" size={20} color={COLORS.textMuted} />
+            <MaterialIcons
+              name={isConnected ? 'person' : 'no-accounts'}
+              size={20}
+              color={COLORS.textMuted}
+            />
           </View>
         </View>
 

@@ -60,6 +60,20 @@ export class PrinterService {
   private connectedDevice: Device | null = null;
   private isPrinterReady = false;
   private isPaused = false;
+  private connectionListeners = new Set<(connected: boolean, device: Device | null) => void>();
+
+  /**
+   * Subscribe to connection state changes.
+   * Returns an unsubscribe function.
+   */
+  onConnectionChange(listener: (connected: boolean, device: Device | null) => void): () => void {
+    this.connectionListeners.add(listener);
+    return () => this.connectionListeners.delete(listener);
+  }
+
+  private notifyConnectionChange(connected: boolean, device: Device | null): void {
+    this.connectionListeners.forEach((l) => l(connected, device));
+  }
 
   private resolveDefaultCharacteristicPair(serviceUuid: string): { tx: string; rx: string } {
     if (serviceUuid.startsWith('0000af30')) {
@@ -257,9 +271,8 @@ export class PrinterService {
   async connect(device: Device): Promise<void> {
     this.connectedDevice = await device.connect();
     await this.connectedDevice.discoverAllServicesAndCharacteristics();
-    
     await this.connectedDevice.requestMTU(512);
-    
+    this.notifyConnectionChange(true, this.connectedDevice);
   }
   
   /**
@@ -283,6 +296,7 @@ export class PrinterService {
     if (this.connectedDevice) {
       await this.connectedDevice.cancelConnection();
       this.connectedDevice = null;
+      this.notifyConnectionChange(false, null);
     }
   }
   

@@ -1,7 +1,7 @@
 import { ensureConnectedPrinter } from '@/src/bluetooth/ensureConnectedPrinter';
-import { getPrinterService } from '@/src/bluetooth/printerService';
 import { getPrintService } from '@/src/services/printService';
 import { clearSavedPrinter, loadSavedPrinter, savePrinter } from '@/src/storage/savedPrinter';
+import { usePrinterStore } from '@/src/store/usePrinterStore';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -17,8 +17,8 @@ export default function HomeScreen() {
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [savedDeviceId, setSavedDeviceId] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
-  const connected = printService.isConnected();
-  const connectedDeviceName = connected ? getPrinterService().getConnectedDevice()?.name ?? 'Printer' : null;
+  const connected = usePrinterStore((s) => s.isConnected);
+  const connectedDeviceName = usePrinterStore((s) => s.device?.name ?? (s.isConnected ? 'Printer' : null));
 
   useEffect(() => {
     let cancelled = false;

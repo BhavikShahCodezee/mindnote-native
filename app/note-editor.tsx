@@ -23,6 +23,7 @@ import {
 import { ensureConnectedPrinter } from '@/src/bluetooth/ensureConnectedPrinter';
 import { loadNotes, upsertNote } from '@/src/storage/notes';
 import { getPrintService } from '@/src/services/printService';
+import { usePrinterStore } from '@/src/store/usePrinterStore';
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -59,6 +60,7 @@ export default function NoteEditorScreen() {
 
   const captureRefView = useRef<View>(null);
   const { settings, appearance, ready } = useTextToImage();
+  const isConnected = usePrinterStore((s) => s.isConnected);
 
   const contentForConversion = useMemo(() => mergeContentForSave(title, body).trim(), [title, body]);
   const layout = useMemo(() => computeTextToImageLayout(contentForConversion || ' ', settings), [contentForConversion, settings]);
@@ -144,7 +146,11 @@ export default function NoteEditorScreen() {
               <MaterialIcons name="push-pin" size={22} color={COLORS.textMuted} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtn} disabled accessibilityLabel="Reminder (coming soon)">
-              <MaterialIcons name="add-alert" size={22} color={COLORS.textMuted} />
+              <MaterialIcons
+                name={isConnected ? 'add-alert' : 'notification-important'}
+                size={22}
+                color={COLORS.textMuted}
+              />
             </TouchableOpacity>
             <TouchableOpacity style={styles.iconBtn} disabled accessibilityLabel="Archive (coming soon)">
               <MaterialIcons name="archive" size={22} color={COLORS.textMuted} />

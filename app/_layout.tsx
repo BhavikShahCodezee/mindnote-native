@@ -5,6 +5,13 @@ import { useFonts } from 'expo-font';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAutoConnect } from '@/src/hooks/useAutoConnect';
+
+/** Mounts once to bootstrap BLE auto-connect and connection state sync. */
+function AutoConnectInitializer() {
+  useAutoConnect();
+  return null;
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -17,6 +24,7 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AutoConnectInitializer />
       <Stack screenOptions={{ headerShown: true }}>
         <Stack.Screen name="index" options={{ title: 'Home' }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
