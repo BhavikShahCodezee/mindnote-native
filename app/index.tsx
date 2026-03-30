@@ -156,6 +156,12 @@ export default function HomeScreen() {
           <Text style={styles.secondaryText}>Settings</Text>
         </TouchableOpacity>
       </View>
+      <TouchableOpacity
+        style={[styles.primaryButton, styles.textToImageButton]}
+        onPress={() => router.push('/text-to-image' as never)}
+      >
+        <Text style={styles.primaryText}>Print Text convert into Image</Text>
+      </TouchableOpacity>
 
       <Modal
         visible={showScanDialog}
@@ -265,5 +271,6 @@ const styles = StyleSheet.create({
   deviceId: { color: '#6b7280', fontSize: 12 },
   emptyDevicesText: { color: '#6b7280', textAlign: 'center', marginTop: 8 },
   actionsRow: { marginTop: 'auto', gap: 10, paddingBottom: 20 },
+  textToImageButton: { marginTop: 4 },
 });
 
