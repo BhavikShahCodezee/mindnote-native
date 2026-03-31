@@ -8,6 +8,7 @@ import 'react-native-reanimated';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAutoConnect } from '@/src/hooks/useAutoConnect';
 import { usePrinterStore } from '@/src/store/usePrinterStore';
+import { AuthProvider } from '@/auth/context/AuthProvider';
 
 /** Bootstraps BLE auto-connect and loads persisted dark mode preference. */
 function AppInitializer() {
@@ -32,18 +33,20 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AppInitializer />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="notes" />
-        <Stack.Screen name="note-editor" />
-        <Stack.Screen name="settings" />
-        <Stack.Screen name="printer" />
-        <Stack.Screen name="driver" />
-        <Stack.Screen name="driver-run" />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
+      <AuthProvider>
+        <AppInitializer />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="notes" />
+          <Stack.Screen name="note-editor" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="printer" />
+          <Stack.Screen name="driver" />
+          <Stack.Screen name="driver-run" />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
+        <StatusBar style="auto" />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

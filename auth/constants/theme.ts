@@ -1,0 +1,13 @@
+export const PRIMARY_COLOR = '#0a7ea4';
+export const BG_PRIMARY = '#ffffff';
+export const TEXT_PRIMARY = '#11181C';
+export const TEXT_SECONDARY = '#687076';
+export const ERROR_COLOR = '#ef4444';
+export const BUTTON_PRIMARY = PRIMARY_COLOR;
+export const BUTTON_PRIMARY_TEXT = '#ffffff';
+export const BUTTON_SECONDARY = '#0a7ea4';
+export const BUTTON_DANGER = ERROR_COLOR;
+export const BUTTON_GHOST_TEXT = TEXT_SECONDARY;
+export const INPUT_BORDER = TEXT_SECONDARY;
+export const INPUT_PLACEHOLDER = TEXT_SECONDARY;
+export const INPUT_ERROR = ERROR_COLOR;

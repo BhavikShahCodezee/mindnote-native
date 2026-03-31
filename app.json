@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mos",
-    "slug": "mos",
+    "name": "Mind-Note",
+    "slug": "mindnote",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -42,7 +42,7 @@
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_CONNECT"
       ],
-      "package": "com.bhavik01.mos"
+      "package": "com.bhavik.mindnote"
     },
     "web": {
       "output": "static",
