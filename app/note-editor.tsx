@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -55,7 +53,6 @@ export default function NoteEditorScreen() {
   const noteId = params.id;
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [saving, setSaving] = useState(false);
   const [editedLabel, setEditedLabel] = useState('');
 
   const captureRefView = useRef<View>(null);
@@ -89,39 +86,44 @@ export default function NoteEditorScreen() {
       router.back();
       return;
     }
-    setSaving(true);
+
+    const now = Date.now();
+    const id = typeof noteId === 'string' ? noteId : generateId();
+
+    // Save note first.
+    await upsertNote({ id, content, updatedAt: now });
+
+    // Capture image while component is still mounted (before navigation).
+    let capturedBase64: string | null = null;
     try {
-      const now = Date.now();
-      const id = typeof noteId === 'string' ? noteId : generateId();
-      await upsertNote({ id, content, updatedAt: now });
-
-      const device = await ensureConnectedPrinter();
-      if (!ready) throw new Error('Text-to-image is still loading');
-      const ref = captureRefView.current;
-      if (!ref) throw new Error('Text-to-image capture view not ready');
-
-      // Ensure the hidden ticket view has updated with latest `title/body`.
-      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-
-      const uri = await captureRef(ref, {
-        format: 'jpg',
-        quality: 1,
-        result: 'data-uri',
-      });
-
-      const base64 = typeof uri === 'string' ? extractBase64FromDataUri(uri) : '';
-      if (!base64 || base64.length < 32) throw new Error('Failed to convert note text to image');
-
-      const result = await printService.printImage('note.jpg', base64, device);
-      if (!result.success) {
-        throw result.error ?? new Error(result.message);
+      if (ready && captureRefView.current) {
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        const uri = await captureRef(captureRefView.current, {
+          format: 'jpg',
+          quality: 1,
+          result: 'data-uri',
+        });
+        const b64 = typeof uri === 'string' ? extractBase64FromDataUri(uri) : '';
+        if (b64.length >= 32) capturedBase64 = b64;
       }
-      setEditedLabel(formatEditedTime(now));
-      router.replace('/notes' as never);
-    } catch (e) {
-      Alert.alert('Save/Print failed', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setSaving(false);
+    } catch {
+      // capture failed — navigate anyway, skip print
+    }
+
+    // Navigate immediately — note is already saved.
+    setEditedLabel(formatEditedTime(now));
+    router.replace('/notes' as never);
+
+    // Print silently in the background — no UI feedback, no alerts.
+    if (capturedBase64) {
+      (async () => {
+        try {
+          const device = await ensureConnectedPrinter();
+          await printService.printImage('note.jpg', capturedBase64!, device);
+        } catch {
+          // silent background print
+        }
+      })();
     }
   }, [body, noteId, printService, ready, router, title]);
 
@@ -132,14 +134,9 @@ export default function NoteEditorScreen() {
           <TouchableOpacity
             style={styles.iconBtn}
             onPress={handleBack}
-            disabled={saving}
             accessibilityLabel="Back and save"
           >
-            {saving ? (
-              <ActivityIndicator size="small" color={COLORS.text} />
-            ) : (
-              <MaterialIcons name="arrow-back" size={24} color={COLORS.text} />
-            )}
+            <MaterialIcons name="arrow-back" size={24} color={COLORS.text} />
           </TouchableOpacity>
           <View style={styles.topBarRight}>
             <TouchableOpacity style={styles.iconBtn} disabled accessibilityLabel="Pin (coming soon)">
@@ -169,7 +166,6 @@ export default function NoteEditorScreen() {
             onChangeText={setTitle}
             placeholder="Title"
             placeholderTextColor={COLORS.textMuted}
-            editable={!saving}
           />
           <TextInput
             multiline
@@ -179,7 +175,6 @@ export default function NoteEditorScreen() {
             placeholder="Note"
             placeholderTextColor={COLORS.textMuted}
             textAlignVertical="top"
-            editable={!saving}
           />
         </ScrollView>
 
