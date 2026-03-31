@@ -7,6 +7,10 @@ import {
   ScrollView,
 } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
+import { usePrinterStore } from '@/src/store/usePrinterStore';
 import {
   BASE_PREVIEW_FONT_PX,
   DEFAULT_SETTINGS,
@@ -22,7 +26,21 @@ import {
   TICKET_WIDTH_MM,
 } from '@/constants/printTicket';
 
-const FONT_OPTIONS: FontStyleKey[] = ['System', 'Excalifont', 'ShadowsIntoLight'];
+const FONT_OPTIONS: FontStyleKey[] = ['Excalifont', 'ShadowsIntoLight', 'QEDaveMergens', 'QETonyFlores'];
+
+const FONT_FAMILY_MAP: Record<FontStyleKey, string> = {
+  Excalifont: 'Excalifont',
+  ShadowsIntoLight: 'ShadowsIntoLight',
+  QEDaveMergens: 'QEDaveMergens',
+  QETonyFlores: 'QETonyFlores',
+};
+
+const FONT_DISPLAY_NAMES: Record<FontStyleKey, string> = {
+  Excalifont: 'Style 1',
+  ShadowsIntoLight: 'Style 2',
+  QEDaveMergens: 'Style 3',
+  QETonyFlores: 'Style 4',
+};
 
 const PREVIEW_CANVAS_W = SETTINGS_PREVIEW_WIDTH_PX;
 const PREVIEW_CANVAS_H = SETTINGS_PREVIEW_HEIGHT_PX;
@@ -65,7 +83,7 @@ function clampNormalizedCenter(
 
 interface LabelPreviewCanvasProps {
   previewText: string;
-  previewFontFamily: string | undefined;
+  previewFontFamily: string;
   previewScale: number;
   previewCenterX: number;
   previewCenterY: number;
@@ -453,26 +471,30 @@ function LabelPreviewCanvas({
 
             <GestureDetector gesture={scaleGestureTl}>
               <View style={styles.handleCornerTopLeft} accessibilityLabel="Resize top left">
-                <View style={styles.handleSquare} />
-                {activeHandle === 'corner-tl' ? <Text style={styles.handleCursorDiag}>↖</Text> : null}
+                <View style={[styles.handleSquare, activeHandle === 'corner-tl' && styles.handleSquareActive]}>
+                  <Text style={[styles.cornerArrowText, activeHandle === 'corner-tl' && styles.cornerArrowTextActive]}>↖</Text>
+                </View>
               </View>
             </GestureDetector>
             <GestureDetector gesture={scaleGestureTr}>
               <View style={styles.handleCornerTopRight} accessibilityLabel="Resize top right">
-                <View style={styles.handleSquare} />
-                {activeHandle === 'corner-tr' ? <Text style={styles.handleCursorDiag}>↗</Text> : null}
+                <View style={[styles.handleSquare, activeHandle === 'corner-tr' && styles.handleSquareActive]}>
+                  <Text style={[styles.cornerArrowText, activeHandle === 'corner-tr' && styles.cornerArrowTextActive]}>↗</Text>
+                </View>
               </View>
             </GestureDetector>
             <GestureDetector gesture={scaleGestureBl}>
               <View style={styles.handleCornerBottomLeft} accessibilityLabel="Resize bottom left">
-                <View style={styles.handleSquare} />
-                {activeHandle === 'corner-bl' ? <Text style={styles.handleCursorDiag}>↙</Text> : null}
+                <View style={[styles.handleSquare, activeHandle === 'corner-bl' && styles.handleSquareActive]}>
+                  <Text style={[styles.cornerArrowText, activeHandle === 'corner-bl' && styles.cornerArrowTextActive]}>↙</Text>
+                </View>
               </View>
             </GestureDetector>
             <GestureDetector gesture={scaleGestureBr}>
               <View style={styles.handleCornerBottomRight} accessibilityLabel="Resize bottom right">
-                <View style={styles.handleSquare} />
-                {activeHandle === 'corner-br' ? <Text style={styles.handleCursorDiag}>↘</Text> : null}
+                <View style={[styles.handleSquare, activeHandle === 'corner-br' && styles.handleSquareActive]}>
+                  <Text style={[styles.cornerArrowText, activeHandle === 'corner-br' && styles.cornerArrowTextActive]}>↘</Text>
+                </View>
               </View>
             </GestureDetector>
 
@@ -503,13 +525,17 @@ function LabelPreviewCanvas({
 }
 
 export default function SettingsScreen() {
+  const router = useRouter();
+  const isDarkMode = usePrinterStore((s) => s.isDarkMode);
+  const SC = isDarkMode ? SETTINGS_DARK : SETTINGS_LIGHT;
+
   const [fontStyle, setFontStyle] = useState<FontStyleKey>(DEFAULT_SETTINGS.fontStyle);
   const [previewScale, setPreviewScale] = useState<number>(DEFAULT_SETTINGS.previewScale);
   const [previewCenterX, setPreviewCenterX] = useState<number>(DEFAULT_SETTINGS.previewCenterX);
   const [previewCenterY, setPreviewCenterY] = useState<number>(DEFAULT_SETTINGS.previewCenterY);
   const [previewRotationDeg, setPreviewRotationDeg] = useState<number>(DEFAULT_SETTINGS.previewRotationDeg);
   const [wrapBySpaces, setWrapBySpaces] = useState<boolean>(DEFAULT_SETTINGS.wrapBySpaces);
-  const [previewText, setPreviewText] = useState('Sample print text');
+  const [previewText, setPreviewText] = useState<string>('Sample print text');
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -558,12 +584,16 @@ export default function SettingsScreen() {
     Alert.alert('Saved', 'Settings saved successfully');
   };
 
-  const previewFontFamily =
-    fontStyle === 'Excalifont'
-      ? 'Excalifont'
-      : fontStyle === 'ShadowsIntoLight'
-        ? 'ShadowsIntoLight'
-        : undefined;
+  const previewFontFamily: string = FONT_FAMILY_MAP[fontStyle];
+
+  const onReset = useCallback(async () => {
+    setFontStyle(DEFAULT_SETTINGS.fontStyle);
+    setPreviewScale(DEFAULT_SETTINGS.previewScale);
+    setPreviewCenterX(DEFAULT_SETTINGS.previewCenterX);
+    setPreviewCenterY(DEFAULT_SETTINGS.previewCenterY);
+    setPreviewRotationDeg(DEFAULT_SETTINGS.previewRotationDeg);
+    await saveAppSettings(DEFAULT_SETTINGS);
+  }, []);
 
   const onPreviewCenter = useCallback((x: number, y: number) => {
     setPreviewCenterX(x);
@@ -571,94 +601,148 @@ export default function SettingsScreen() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        nestedScrollEnabled
-      >
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Font Style</Text>
-          <View style={styles.rowWrap}>
-            {FONT_OPTIONS.map((font) => (
-              <TouchableOpacity
-                key={font}
-                style={[styles.chip, fontStyle === font && styles.chipActive]}
-                onPress={() => setFontStyle(font)}
-              >
-                <Text style={[styles.chipText, fontStyle === font && styles.chipTextActive]}>{font}</Text>
-              </TouchableOpacity>
-            ))}
+    <GestureHandlerRootView style={[styles.root, { backgroundColor: SC.bg }]}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+        {/* Header matching notes top bar style */}
+        <View style={[styles.topBar, { borderBottomColor: SC.divider }]}>
+          <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()} accessibilityLabel="Back">
+            <MaterialIcons name="arrow-back" size={24} color={SC.text} />
+          </TouchableOpacity>
+          <Text style={[styles.topBarTitle, { color: SC.text }]}>Settings</Text>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={[styles.container, { backgroundColor: SC.bg }]}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
+          <View style={[styles.card, { backgroundColor: SC.cardBg, borderColor: SC.border }]}>
+            <Text style={[styles.sectionTitle, { color: SC.text }]}>Font Style</Text>
+            <View style={styles.rowWrap}>
+              {FONT_OPTIONS.map((font) => (
+                <TouchableOpacity
+                  key={font}
+                  style={[styles.chip, { backgroundColor: SC.chipBg }, fontStyle === font && styles.chipActive]}
+                  onPress={() => setFontStyle(font)}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: SC.chipText, fontFamily: FONT_FAMILY_MAP[font] },
+                      fontStyle === font && styles.chipTextActive,
+                    ]}
+                  >
+                    {FONT_DISPLAY_NAMES[font]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>
-            Live Preview ({TICKET_WIDTH_MM}mm x {TICKET_HEIGHT_MM}mm)
-          </Text>
-          <Text style={styles.previewHint}>
-            Drag inside box to move, corners to resize, and top handle to rotate. Values update live.
-          </Text>
-          <TextInput
-            style={styles.previewInput}
-            value={previewText}
-            onChangeText={setPreviewText}
-            placeholder="Type preview text..."
-            multiline
-          />
-          <LabelPreviewCanvas
-            previewText={previewText}
-            previewFontFamily={previewFontFamily}
-            previewScale={previewScale}
-            previewCenterX={previewCenterX}
-            previewCenterY={previewCenterY}
-            previewRotationDeg={previewRotationDeg}
-            onPreviewScale={setPreviewScale}
-            onPreviewCenter={onPreviewCenter}
-            onPreviewRotationDeg={setPreviewRotationDeg}
-          />
-        </View>
+          <View style={[styles.card, { backgroundColor: SC.cardBg, borderColor: SC.border }]}>
+            <Text style={[styles.sectionTitle, { color: SC.text }]}>
+              Live Preview ({TICKET_WIDTH_MM}mm x {TICKET_HEIGHT_MM}mm)
+            </Text>
+            <Text style={[styles.previewHint, { color: SC.textMuted }]}>
+              Drag inside box to move, corners to resize, and top handle to rotate. Values update live.
+            </Text>
+            <TextInput
+              style={[
+                styles.previewInput,
+                { backgroundColor: SC.inputBg, borderColor: SC.border, color: SC.text },
+              ]}
+              value={previewText}
+              onChangeText={setPreviewText}
+              placeholder="Type preview text..."
+              placeholderTextColor={SC.textMuted}
+              multiline
+            />
+            <LabelPreviewCanvas
+              previewText={previewText}
+              previewFontFamily={previewFontFamily}
+              previewScale={previewScale}
+              previewCenterX={previewCenterX}
+              previewCenterY={previewCenterY}
+              previewRotationDeg={previewRotationDeg}
+              onPreviewScale={setPreviewScale}
+              onPreviewCenter={onPreviewCenter}
+              onPreviewRotationDeg={setPreviewRotationDeg}
+            />
+          </View>
 
-        <TouchableOpacity style={styles.saveButton} onPress={onSave}>
-          <Text style={styles.saveText}>Save</Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.resetButton} onPress={onReset}>
+              <MaterialIcons name="refresh" size={18} color="#0a7ea4" />
+              <Text style={styles.resetText}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.saveButton} onPress={onSave}>
+              <Text style={styles.saveText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
     </GestureHandlerRootView>
   );
 }
+
+const SETTINGS_DARK = {
+  bg: '#202124',
+  cardBg: '#2d2e31',
+  border: '#5f6368',
+  divider: '#3c4043',
+  text: '#e8eaed',
+  textMuted: '#9aa0a6',
+  chipBg: '#3c4043',
+  chipText: '#e8eaed',
+  inputBg: '#303134',
+};
+
+const SETTINGS_LIGHT = {
+  bg: '#f8f9fa',
+  cardBg: '#ffffff',
+  border: '#e0e0e0',
+  divider: '#dadce0',
+  text: '#202124',
+  textMuted: '#5f6368',
+  chipBg: '#edf1f7',
+  chipText: '#1f2937',
+  inputBg: '#ffffff',
+};
 
 const HANDLE_HIT = 40;
 const HANDLE_VIS = 12;
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  container: { padding: 16, gap: 12, backgroundColor: '#f6f8fc', flexGrow: 1 },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  topBarBtn: { padding: 10 },
+  topBarTitle: { fontSize: 18, fontWeight: '600', marginLeft: 4 },
+  container: { padding: 16, gap: 12, flexGrow: 1 },
   card: {
-    backgroundColor: '#fff',
     borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
     gap: 12,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#111827' },
-  previewHint: { fontSize: 12, color: '#6b7280', lineHeight: 16 },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+  previewHint: { fontSize: 12, lineHeight: 16 },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  chip: { borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, backgroundColor: '#edf1f7' },
+  chip: { borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14 },
   chipActive: { backgroundColor: '#0a7ea4' },
-  chipText: { color: '#1f2937', fontWeight: '600' },
+  chipText: {},
   chipTextActive: { color: '#fff' },
   previewInput: {
     borderWidth: 1,
-    borderColor: '#e5e7eb',
     borderRadius: 10,
     minHeight: 72,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    color: '#111827',
   },
   previewOuter: { alignItems: 'center', gap: 8, paddingTop: 28, overflow: 'visible' },
   previewPaper: {
@@ -686,16 +770,33 @@ const styles = StyleSheet.create({
   },
   previewText: {
     color: '#2563eb',
-    fontWeight: '700',
     includeFontPadding: false,
   },
   handleSquare: {
-    width: HANDLE_VIS,
-    height: HANDLE_VIS,
-    borderRadius: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 4,
     backgroundColor: '#fff',
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#0a7ea4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  handleSquareActive: {
+    backgroundColor: '#e0f2fe',
+    borderColor: '#0284c7',
+    borderWidth: 2,
+  },
+  cornerArrowText: {
+    fontSize: 11,
+    color: '#0a7ea4',
+    fontWeight: '700',
+    lineHeight: 13,
+    includeFontPadding: false,
+  },
+  cornerArrowTextActive: {
+    color: '#0284c7',
+    fontSize: 13,
   },
   handleCircle: {
     width: HANDLE_VIS,
@@ -824,9 +925,26 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   liveStats: { paddingHorizontal: 4 },
-  liveStatsText: { fontSize: 12, color: '#374151', fontWeight: '600', textAlign: 'center' },
-  saveButton: {
+  liveStatsText: { fontSize: 12, color: '#9aa0a6', fontWeight: '600', textAlign: 'center' },
+  actionRow: {
     marginTop: 'auto',
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+  },
+  resetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: '#0a7ea4',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+  },
+  resetText: { color: '#0a7ea4', fontWeight: '700', fontSize: 16 },
+  saveButton: {
+    flex: 1,
     backgroundColor: '#0a7ea4',
     borderRadius: 12,
     paddingVertical: 14,

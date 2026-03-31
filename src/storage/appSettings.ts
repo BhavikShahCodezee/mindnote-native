@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type FontStyleKey = 'System' | 'Excalifont' | 'ShadowsIntoLight';
+export type FontStyleKey = 'Excalifont' | 'ShadowsIntoLight' | 'QEDaveMergens' | 'QETonyFlores';
 export type TextAlignKey = 'left' | 'center' | 'right';
 export type VerticalPositionKey = 'top' | 'center' | 'bottom';
 
@@ -32,11 +32,11 @@ const SETTINGS_KEY_V2 = 'mos:settings:v2';
 const SETTINGS_KEY_V1 = 'mos:settings:v1';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  fontStyle: 'System',
-  previewScale: 1,
+  fontStyle: 'Excalifont',
+  previewScale: 2,
   previewCenterX: 0.5,
   previewCenterY: 0.5,
-  previewRotationDeg: 0,
+  previewRotationDeg: 90,
   wrapBySpaces: true,
   notesPrintType: 'image',
 };
@@ -49,9 +49,16 @@ export function clampPreviewScale(v: number): number {
   return Math.min(PREVIEW_SCALE_MAX, Math.max(PREVIEW_SCALE_MIN, v));
 }
 
+const VALID_FONT_STYLES: FontStyleKey[] = ['Excalifont', 'ShadowsIntoLight', 'QEDaveMergens', 'QETonyFlores'];
+
 function normalizePartial(parsed: Partial<AppSettings>): AppSettings {
+  const rawFont = parsed.fontStyle as string | undefined;
+  const fontStyle: FontStyleKey =
+    rawFont && VALID_FONT_STYLES.includes(rawFont as FontStyleKey)
+      ? (rawFont as FontStyleKey)
+      : DEFAULT_SETTINGS.fontStyle;
   return {
-    fontStyle: parsed.fontStyle ?? DEFAULT_SETTINGS.fontStyle,
+    fontStyle,
     previewScale: clampPreviewScale(parsed.previewScale ?? DEFAULT_SETTINGS.previewScale),
     previewCenterX: clamp01(parsed.previewCenterX ?? DEFAULT_SETTINGS.previewCenterX),
     previewCenterY: clamp01(parsed.previewCenterY ?? DEFAULT_SETTINGS.previewCenterY),
