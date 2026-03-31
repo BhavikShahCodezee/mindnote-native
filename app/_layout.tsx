@@ -39,6 +39,8 @@ export default function RootLayout() {
         <Stack.Screen name="note-editor" />
         <Stack.Screen name="settings" />
         <Stack.Screen name="printer" />
+        <Stack.Screen name="driver" />
+        <Stack.Screen name="driver-run" />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
       <StatusBar style="auto" />

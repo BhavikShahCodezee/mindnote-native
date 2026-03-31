@@ -414,8 +414,8 @@ export default function NotesScreen() {
 
             <View style={styles.drawerDivider} />
 
-            {/* Create new label — fake UI item */}
-            <TouchableOpacity style={styles.drawerItem} onPress={() => closeDrawer()}>
+            {/* Create new label — opens Label Driver setup */}
+            <TouchableOpacity style={styles.drawerItem} onPress={() => navigateTo('/driver')}>
               <MaterialIcons name="add" size={22} color={C.drawerIcon} />
               <Text style={styles.drawerItemLabel}>Create new label</Text>
             </TouchableOpacity>
