@@ -10,6 +10,7 @@ import { BleManager, Device, State } from 'react-native-ble-plx';
 import { Buffer } from 'buffer';
 import { Platform, PermissionsAndroid } from 'react-native';
 import type { Permission, PermissionStatus } from 'react-native';
+import type { Subscription } from 'react-native-ble-plx';
 
 /**
  * BLE Service UUIDs
@@ -58,6 +59,7 @@ const WAIT_FOR_PRINTER_DONE_TIMEOUT_MS = 30000;
 export class PrinterService {
   private bleManager: BleManager | null = null;
   private connectedDevice: Device | null = null;
+  private disconnectMonitor: Subscription | null = null;
   private isPrinterReady = false;
   private isPaused = false;
   private connectionListeners = new Set<(connected: boolean, device: Device | null) => void>();
@@ -126,6 +128,12 @@ export class PrinterService {
         'Please create a development build using: eas build --profile development --platform android'
       );
     }
+  }
+
+  onAdapterStateChange(listener: (state: State) => void): (() => void) {
+    if (!this.bleManager) return () => {};
+    const sub = this.bleManager.onStateChange(listener, true);
+    return () => sub.remove();
   }
   
   /**
@@ -269,9 +277,17 @@ export class PrinterService {
    * @param device - Device to connect to
    */
   async connect(device: Device): Promise<void> {
+    if (this.disconnectMonitor) {
+      this.disconnectMonitor.remove();
+      this.disconnectMonitor = null;
+    }
     this.connectedDevice = await device.connect();
     await this.connectedDevice.discoverAllServicesAndCharacteristics();
     await this.connectedDevice.requestMTU(512);
+    this.disconnectMonitor = this.bleManager?.onDeviceDisconnected(this.connectedDevice.id, () => {
+      this.connectedDevice = null;
+      this.notifyConnectionChange(false, null);
+    }) ?? null;
     this.notifyConnectionChange(true, this.connectedDevice);
   }
   
@@ -293,6 +309,10 @@ export class PrinterService {
    * Disconnect from the printer
    */
   async disconnect(): Promise<void> {
+    if (this.disconnectMonitor) {
+      this.disconnectMonitor.remove();
+      this.disconnectMonitor = null;
+    }
     if (this.connectedDevice) {
       await this.connectedDevice.cancelConnection();
       this.connectedDevice = null;
@@ -488,6 +508,10 @@ export class PrinterService {
    * Cleanup resources
    */
   destroy(): void {
+    if (this.disconnectMonitor) {
+      this.disconnectMonitor.remove();
+      this.disconnectMonitor = null;
+    }
     if (this.bleManager) {
       this.bleManager.destroy();
     }

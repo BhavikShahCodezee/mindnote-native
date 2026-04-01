@@ -186,6 +186,29 @@ export function applyThreshold(imageData: GrayscaleImage, threshold = 128): Bina
   return imageData.map((row) => row.map((px) => px < threshold ? false : true));
 }
 
+/**
+ * Force a white safety border around the final bitmap to avoid edge artifacts
+ * (corner dots / stray border pixels) on thermal printers.
+ *
+ * NOTE: In this pipeline, `true` is the white-side value before polarity handling.
+ */
+function forceWhiteBorder(binary: BinaryImage, borderPx = 2): BinaryImage {
+  if (!binary.length || !binary[0]?.length) return binary;
+  const h = binary.length;
+  const w = binary[0].length;
+  const out = binary.map((row) => row.slice());
+  const b = Math.max(1, Math.min(borderPx, Math.floor(Math.min(w, h) / 2)));
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x < b || y < b || x >= w - b || y >= h - b) {
+        out[y][x] = true;
+      }
+    }
+  }
+  return out;
+}
+
 export function toBitmapBytes(binaryImage: BinaryImage, width = 384): Uint8Array[] {
   const bytesPerRow = width / 8;
   return binaryImage.map((row) => {
@@ -219,11 +242,13 @@ export function processJpegBase64ToBitmap(
   // - current firmware bitmap width is `PRINT_WIDTH` (384px) for 57mm.
   // - use the same dpi for height so our bitmap is always fully printable.
   const printerEffectiveDpi = (PRINT_WIDTH * 25.4) / TICKET_WIDTH_MM;
-  const targetWidth = PRINT_WIDTH;
+  // Thermal protocol packs 8 pixels per byte; width MUST stay 8-aligned.
+  const targetWidth = Math.ceil(PRINT_WIDTH / 8) * 8;
   const targetHeight = Math.round((TICKET_HEIGHT_MM * printerEffectiveDpi) / 25.4); // == PRINT_WIDTH * TICKET_HEIGHT_MM / TICKET_WIDTH_MM
 
   const contained = resizeImageContain(decoded.rgba, decoded.width, decoded.height, targetWidth, targetHeight);
   const grayscale = toGrayscale(contained.rgba, contained.width, contained.height, true);
-  return applyThreshold(grayscale, threshold);
+  const binary = applyThreshold(grayscale, threshold);
+  return forceWhiteBorder(binary, 2);
 }
 

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { State } from 'react-native-ble-plx';
 import { getPrinterService } from '@/src/bluetooth/printerService';
 import { getPrintService } from '@/src/services/printService';
 import { loadSavedPrinter } from '@/src/storage/savedPrinter';
@@ -14,9 +15,16 @@ import { usePrinterStore } from '@/src/store/usePrinterStore';
 export function useAutoConnect(): void {
   const setConnected = usePrinterStore((s) => s.setConnected);
   const setDisconnected = usePrinterStore((s) => s.setDisconnected);
+  const setConnecting = usePrinterStore((s) => s.setConnecting);
+  const setScanning = usePrinterStore((s) => s.setScanning);
 
   useEffect(() => {
     const printerService = getPrinterService();
+    const printService = getPrintService();
+    const SCAN_INTERVAL_MS = 4000;
+    let savedPrinter: Awaited<ReturnType<typeof loadSavedPrinter>> = null;
+    let cancelled = false;
+    let inFlight = false;
 
     // 1. Register real-time connection state listener.
     const unsubscribe = printerService.onConnectionChange((connected, device) => {
@@ -27,48 +35,69 @@ export function useAutoConnect(): void {
       }
     });
 
-    // 2. Sync current state in case the printer was already connected before
-    //    this hook mounted (e.g. re-render of root layout).
+    // 2. Sync current state in case the printer was already connected.
     if (printerService.isConnected()) {
       const existing = printerService.getConnectedDevice();
       if (existing) setConnected(existing);
     }
 
-    // 3. Auto-connect saved device (best-effort, fails silently).
-    let cancelled = false;
-    (async () => {
+    const tryAutoConnect = async (): Promise<void> => {
+      if (cancelled || inFlight) return;
       if (printerService.isConnected()) return;
+      if (!savedPrinter?.id) return;
 
-      const saved = await loadSavedPrinter();
-      if (!saved || cancelled) return;
+      inFlight = true;
+      setScanning(true);
+      try {
+        const list = await printService.scanForPrinters(2200, true);
+        if (cancelled) return;
 
-      const printService = getPrintService();
-      let attempts = 0;
+        const match =
+          list.find((d) => d.id === savedPrinter!.id) ??
+          (savedPrinter.name ? list.find((d) => d.name === savedPrinter!.name) : undefined);
+        if (!match) return;
 
-      while (attempts < 2 && !cancelled) {
-        attempts++;
-        try {
-          const list = await printService.scanForPrinters(2500, true);
-          if (cancelled) return;
-
-          const match =
-            list.find((d) => d.id === saved.id) ??
-            (saved.name ? list.find((d) => d.name === saved.name) : undefined);
-
-          if (!match) return;
-
-          const result = await printService.connectToDevice(match);
-          if (result.success) return;
-        } catch {
-          // fail silently — do not crash or show error UI
+        setScanning(false);
+        setConnecting(true);
+        const result = await printService.connectToDevice(match);
+        if (!result.success && !cancelled) {
+          setDisconnected();
         }
+      } catch {
+        // Safe failure: Bluetooth off, permission denied, or scan/connect error.
+      } finally {
+        inFlight = false;
+        setScanning(false);
+        setConnecting(false);
       }
+    };
+
+    const onAdapterState = (state: State) => {
+      if (state !== State.PoweredOn) {
+        setDisconnected();
+        return;
+      }
+      void tryAutoConnect();
+    };
+    const unsubscribeAdapter = printerService.onAdapterStateChange(onAdapterState);
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+    (async () => {
+      savedPrinter = await loadSavedPrinter();
+      if (cancelled) return;
+      void tryAutoConnect();
+      interval = setInterval(() => {
+        if (!printerService.isConnected()) {
+          void tryAutoConnect();
+        }
+      }, SCAN_INTERVAL_MS);
     })();
 
     return () => {
       cancelled = true;
+      if (interval) clearInterval(interval);
       unsubscribe();
+      unsubscribeAdapter();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setConnected, setConnecting, setDisconnected, setScanning]);
 }

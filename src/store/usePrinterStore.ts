@@ -7,8 +7,12 @@ const DARK_MODE_KEY = 'mos.darkMode.v1';
 interface PrinterState {
   isConnected: boolean;
   device: Device | null;
+  isConnecting: boolean;
+  isScanning: boolean;
   setConnected: (device: Device) => void;
   setDisconnected: () => void;
+  setConnecting: (isConnecting: boolean) => void;
+  setScanning: (isScanning: boolean) => void;
 
   isDarkMode: boolean;
   toggleDarkMode: () => void;
@@ -18,8 +22,12 @@ interface PrinterState {
 export const usePrinterStore = create<PrinterState>((set, get) => ({
   isConnected: false,
   device: null,
-  setConnected: (device) => set({ isConnected: true, device }),
-  setDisconnected: () => set({ isConnected: false, device: null }),
+  isConnecting: false,
+  isScanning: false,
+  setConnected: (device) => set({ isConnected: true, device, isConnecting: false, isScanning: false }),
+  setDisconnected: () => set({ isConnected: false, device: null, isConnecting: false }),
+  setConnecting: (isConnecting) => set({ isConnecting }),
+  setScanning: (isScanning) => set({ isScanning }),
 
   isDarkMode: true,
   toggleDarkMode: () => {
