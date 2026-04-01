@@ -1,3 +1,20 @@
+import {
+  SETTINGS_PREVIEW_HEIGHT_PX,
+  SETTINGS_PREVIEW_WIDTH_PX,
+  TICKET_HEIGHT_MM,
+  TICKET_WIDTH_MM,
+} from '@/constants/printTicket';
+import {
+  BASE_PREVIEW_FONT_PX,
+  DEFAULT_SETTINGS,
+  FontStyleKey,
+  clampPreviewScale,
+  loadAppSettings,
+  saveAppSettings,
+} from '@/src/storage/appSettings';
+import { usePrinterStore } from '@/src/store/usePrinterStore';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import {
@@ -7,24 +24,7 @@ import {
   ScrollView,
 } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialIcons } from '@expo/vector-icons';
-import { usePrinterStore } from '@/src/store/usePrinterStore';
-import {
-  BASE_PREVIEW_FONT_PX,
-  DEFAULT_SETTINGS,
-  FontStyleKey,
-  clampPreviewScale,
-  loadAppSettings,
-  saveAppSettings,
-} from '@/src/storage/appSettings';
-import {
-  SETTINGS_PREVIEW_HEIGHT_PX,
-  SETTINGS_PREVIEW_WIDTH_PX,
-  TICKET_HEIGHT_MM,
-  TICKET_WIDTH_MM,
-} from '@/constants/printTicket';
 
 const FONT_OPTIONS: FontStyleKey[] = ['Excalifont', 'ShadowsIntoLight', 'QEDaveMergens', 'QETonyFlores'];
 
@@ -535,7 +535,7 @@ export default function SettingsScreen() {
   const [previewCenterY, setPreviewCenterY] = useState<number>(DEFAULT_SETTINGS.previewCenterY);
   const [previewRotationDeg, setPreviewRotationDeg] = useState<number>(DEFAULT_SETTINGS.previewRotationDeg);
   const [wrapBySpaces, setWrapBySpaces] = useState<boolean>(DEFAULT_SETTINGS.wrapBySpaces);
-  const [previewText, setPreviewText] = useState<string>('Sample print text');
+  const [previewText, setPreviewText] = useState<string>('Prediction');
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

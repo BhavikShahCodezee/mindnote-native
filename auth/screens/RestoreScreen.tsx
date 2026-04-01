@@ -1,4 +1,5 @@
 import { AuthHeader } from '@/auth/components/AuthHeader';
+import { AppFooter } from '@/components/AppFooter';
 import { LoadingButton } from '@/auth/components/ui/LoadingButton';
 import { BG_PRIMARY, INPUT_BORDER, INPUT_PLACEHOLDER, TEXT_PRIMARY } from '@/auth/constants/theme';
 import { useResponsive } from '@/auth/hooks/useResponsive';
@@ -76,6 +77,10 @@ export default function RestoreScreen({ onSuccess, onCancel }: Props) {
           <LoadingButton title="Restore" onPress={handleRestore} loading={busy} fullWidth style={[s.btn, { marginTop: spacing.lg, paddingVertical: getSize(14, 16) }]} />
           <LoadingButton title="Register" variant="ghost" onPress={onCancel} fullWidth style={[s.cancel, { marginTop: spacing.md }]} />
         </View>
+      </View>
+
+      <View style={{ paddingBottom: insets.bottom, paddingTop: spacing.md }}>
+        <AppFooter />
       </View>
     </View>
   );

@@ -1,4 +1,5 @@
 import { AuthHeader } from '@/auth/components/AuthHeader';
+import { AppFooter } from '@/components/AppFooter';
 import { LoadingButton } from '@/auth/components/ui/LoadingButton';
 import {
   BG_PRIMARY,
@@ -176,7 +177,10 @@ export default function LoginScreen({ onSuccess, onRestore }: Props) {
           </TouchableOpacity>
         </View>
       </View>
-     
+
+      <View style={{ paddingBottom: insets.bottom, paddingTop: spacing.md }}>
+        <AppFooter />
+      </View>
     </View>
   );
 }
