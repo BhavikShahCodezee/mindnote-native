@@ -51,6 +51,16 @@ export interface PrintResult {
  * Handles the complete printing workflow from image to printed output.
  */
 export class PrintService {
+  private forceWhiteBorderAtPrinterStage(img: boolean[][], borderPx = 2): boolean[][] {
+    if (!img.length || !img[0]?.length) return img;
+    const h = img.length;
+    const w = img[0].length;
+    const b = Math.max(1, Math.min(borderPx, Math.floor(Math.min(w, h) / 2)));
+    return img.map((row, y) =>
+      row.map((px, x) => (x < b || y < b || x >= w - b || y >= h - b ? false : px))
+    );
+  }
+
   private async getCurrentPrintConfig(): Promise<{
     settings: AppSettings;
     energy: number;
@@ -152,6 +162,7 @@ export class PrintService {
         .reverse()
         // Fix horizontal mirroring: mirror each row before packing bytes.
         .map((row) => row.slice().reverse().map((p) => !p));
+      const guardedBinary = this.forceWhiteBorderAtPrinterStage(binaryForPrinter, 3);
       if (binaryForPrinter.length === 0) throw new Error('Image bitmap is empty');
       
       const imageSize = {
@@ -165,7 +176,7 @@ export class PrintService {
       }
       const quality = getQuality();
       const modelName = device?.name ?? deviceName;
-      const commandData = cmdsPrintImg(binaryForPrinter, forcedEnergy, quality, modelName);
+      const commandData = cmdsPrintImg(guardedBinary, forcedEnergy, quality, modelName);
       
       const printerService = getPrinterService();
       if (getDryRun()) {
