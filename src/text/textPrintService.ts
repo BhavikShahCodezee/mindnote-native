@@ -1,6 +1,6 @@
 import type { Device } from 'react-native-ble-plx';
-import { cmdsPrintImg, PRINT_WIDTH } from '../printer/commandGenerator';
-import { getPrinterService, POSSIBLE_SERVICE_UUIDS } from '../bluetooth/printerService';
+import { cmdsPrintImg, cmdsPrintImgPeriPage, PRINT_WIDTH } from '../printer/commandGenerator';
+import { ALL_POSSIBLE_SERVICE_UUIDS, getPrinterService } from '../bluetooth/printerService';
 import { getQuality } from '../settings';
 import { wrapTextToLines } from './textWrap';
 import type { FontStyleKey } from '@/src/storage/appSettings';
@@ -8,6 +8,7 @@ import { BASE_PREVIEW_FONT_PX } from '@/src/storage/appSettings';
 import { SETTINGS_PREVIEW_HEIGHT_PX, SETTINGS_PREVIEW_WIDTH_PX, TICKET_HEIGHT_MM, TICKET_WIDTH_MM } from '@/constants/printTicket';
 import { Canvas } from 'react-native-canvas';
 import { processJpegBase64ToBitmap } from '@/src/utils/imageProcessor';
+import { loadPrinterDeviceType } from '@/src/storage/printerDeviceType';
 
 type BinaryImage = boolean[][];
 
@@ -18,6 +19,16 @@ const MIN_BOX_WIDTH = 40;
 const TICKET_HEIGHT_PX = Math.round((PRINT_WIDTH * TICKET_HEIGHT_MM) / TICKET_WIDTH_MM);
 const PREVIEW_INNER_W_PX = SETTINGS_PREVIEW_WIDTH_PX - 2 * PREVIEW_PADDING_PX;
 const PREVIEW_INNER_H_PX = SETTINGS_PREVIEW_HEIGHT_PX - 2 * PREVIEW_PADDING_PX;
+
+function forceWhiteBorderAtPrinterStage(img: BinaryImage, borderPx = 2): BinaryImage {
+  if (!img.length || !img[0]?.length) return img;
+  const h = img.length;
+  const w = img[0].length;
+  const b = Math.max(1, Math.min(borderPx, Math.floor(Math.min(w, h) / 2)));
+  return img.map((row, y) =>
+    row.map((px, x) => (x < b || y < b || x >= w - b || y >= h - b ? false : px))
+  );
+}
 
 interface TextPrintOptions {
   text: string;
@@ -216,7 +227,7 @@ async function ensureWritableConnectedDevice(device?: Device | null): Promise<De
   }
   const services = await connected.services();
   const hasKnownService = services.some((s) =>
-    POSSIBLE_SERVICE_UUIDS.includes(s.uuid.toLowerCase())
+    ALL_POSSIBLE_SERVICE_UUIDS.includes(s.uuid.toLowerCase())
   );
   if (!hasKnownService) {
     throw new Error('Connected device is not writable as Cat-Printer service');
@@ -268,7 +279,12 @@ export async function printTextDirect(options: TextPrintOptions): Promise<TextPr
     const height = ticketMono.length;
 
     const quality = getQuality();
-    const commandData = cmdsPrintImg(ticketMono, energy, quality, activeDevice.name ?? undefined);
+    const deviceType = await loadPrinterDeviceType();
+    const guardedTicketMono = forceWhiteBorderAtPrinterStage(ticketMono, 3);
+    const commandData =
+      deviceType === 'C'
+        ? cmdsPrintImgPeriPage(guardedTicketMono)
+        : cmdsPrintImg(guardedTicketMono, energy, quality, activeDevice.name ?? undefined);
     await getPrinterService().sendData(commandData);
 
     return { success: true, message: 'Text printed successfully', imageSize: { width, height }, dataSize: commandData.length };
@@ -476,15 +492,20 @@ export async function printTextAsImageDirect(options: TextPrintOptions): Promise
     const binaryForPrinter = [...binaryImage]
       .reverse()
       .map((row) => row.slice().reverse().map((p) => !p));
+    const guardedBinary = forceWhiteBorderAtPrinterStage(binaryForPrinter, 3);
 
     const quality = getQuality();
-    const commandData = cmdsPrintImg(binaryForPrinter, energy, quality, activeDevice.name ?? undefined);
+    const deviceType = await loadPrinterDeviceType();
+    const commandData =
+      deviceType === 'C'
+        ? cmdsPrintImgPeriPage(guardedBinary)
+        : cmdsPrintImg(guardedBinary, energy, quality, activeDevice.name ?? undefined);
     await getPrinterService().sendData(commandData);
 
     return {
       success: true,
       message: 'Text (as image) printed successfully',
-      imageSize: { width: PRINT_WIDTH, height: binaryForPrinter.length },
+      imageSize: { width: PRINT_WIDTH, height: guardedBinary.length },
       dataSize: commandData.length,
     };
   } catch (error) {

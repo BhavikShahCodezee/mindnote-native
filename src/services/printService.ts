@@ -8,7 +8,7 @@
  */
 
 import { DitheringAlgorithm } from '../image/dithering';
-import { cmdsPrintImg } from '../printer/commandGenerator';
+import { cmdsPrintImg, cmdsPrintImgPeriPage } from '../printer/commandGenerator';
 import { getPrinterService } from '../bluetooth/printerService';
 import { getDryRun, getQuality } from '../settings';
 import type { Device } from 'react-native-ble-plx';
@@ -19,6 +19,7 @@ import {
   loadAppSettings,
 } from '@/src/storage/appSettings';
 import { printTextAsImageDirect } from '@/src/text/textPrintService';
+import { loadPrinterDeviceType } from '@/src/storage/printerDeviceType';
 
 /**
  * Print configuration options (Cat-Printer–style)
@@ -175,8 +176,12 @@ export class PrintService {
         // TODO: Implement preview functionality
       }
       const quality = getQuality();
+      const deviceType = await loadPrinterDeviceType();
       const modelName = device?.name ?? deviceName;
-      const commandData = cmdsPrintImg(guardedBinary, forcedEnergy, quality, modelName);
+      const commandData =
+        deviceType === 'C'
+          ? cmdsPrintImgPeriPage(guardedBinary)
+          : cmdsPrintImg(guardedBinary, forcedEnergy, quality, modelName);
       
       const printerService = getPrinterService();
       if (getDryRun()) {

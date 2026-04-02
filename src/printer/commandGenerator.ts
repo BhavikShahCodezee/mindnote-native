@@ -234,6 +234,58 @@ export function cmdsPrintImg(
 }
 
 /**
+ * PeriPage-style bitmap print command stream (ESC/POS-like).
+ * Mirrors the Print2BLE preGraphics/scanLine/postGraphics structure.
+ */
+export function cmdsPrintImgPeriPage(img: BinaryImage): Uint8Array {
+  const paperWidth = PRINT_WIDTH;
+  const bytesPerRow = paperWidth / 8;
+  const height = Math.max(0, img.length);
+  const parts: Uint8Array[] = [];
+
+  // preGraphics() for PeriPage
+  parts.push(new Uint8Array([0x10, 0xff, 0xfe, 0x01]));
+  parts.push(new Uint8Array(12)); // 12 zero bytes
+  parts.push(
+    new Uint8Array([
+      0x1d,
+      0x76,
+      0x30,
+      0x00,
+      bytesPerRow & 0xff,
+      0x00,
+      height & 0xff,
+      (height >> 8) & 0xff,
+    ])
+  );
+
+  // scanLine(): raw row bytes, no Cat framing
+  for (const row of img) {
+    const rowBytes = new Uint8Array(bytesPerRow);
+    for (let x = 0; x < paperWidth; x++) {
+      if (row[x]) {
+        const byteIndex = (x / 8) | 0;
+        const bitIndex = 7 - (x % 8);
+        rowBytes[byteIndex] |= 1 << bitIndex;
+      }
+    }
+    parts.push(rowBytes);
+  }
+
+  // postGraphics() for PeriPage
+  parts.push(new Uint8Array([0x1b, 0x4a, 0x40, 0x10, 0xff, 0xfe, 0x45]));
+
+  const totalLength = parts.reduce((sum, part) => sum + part.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
+  return result;
+}
+
+/**
  * Convert Uint8Array to Buffer for BLE transmission
  */
 export function toBuffer(data: Uint8Array): Buffer {

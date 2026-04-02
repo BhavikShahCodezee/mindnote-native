@@ -6,11 +6,12 @@
  * Ported from Python implementation: catprinter/ble.py
  */
 
-import { BleManager, Device, State } from 'react-native-ble-plx';
+import { loadPrinterDeviceType } from '@/src/storage/printerDeviceType';
 import { Buffer } from 'buffer';
-import { Platform, PermissionsAndroid } from 'react-native';
 import type { Permission, PermissionStatus } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 import type { Subscription } from 'react-native-ble-plx';
+import { BleManager, Device, State } from 'react-native-ble-plx';
 
 /**
  * BLE Service UUIDs
@@ -20,6 +21,16 @@ export const POSSIBLE_SERVICE_UUIDS = [
   '0000ae30-0000-1000-8000-00805f9b34fb',  // Raspberry Pi
   '0000af30-0000-1000-8000-00805f9b34fb',  // macOS
 ];
+const POSSIBLE_SERVICE_UUIDS_DEVICE_B = [
+  '000018f0-0000-1000-8000-00805f9b34fb',
+  '0000ae30-0000-1000-8000-00805f9b34fb',
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+];
+const POSSIBLE_SERVICE_UUIDS_DEVICE_C = [
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '000018f0-0000-1000-8000-00805f9b34fb',
+];
 
 /**
  * BLE Characteristic UUIDs
@@ -28,6 +39,12 @@ export const TX_CHARACTERISTIC_UUID = '0000ae01-0000-1000-8000-00805f9b34fb';  /
 export const RX_CHARACTERISTIC_UUID = '0000ae02-0000-1000-8000-00805f9b34fb';  // Receive data
 const TX_CHARACTERISTIC_UUID_ALT = '0000af01-0000-1000-8000-00805f9b34fb';
 const RX_CHARACTERISTIC_UUID_ALT = '0000af02-0000-1000-8000-00805f9b34fb';
+const TX_CHARACTERISTIC_UUID_DEVICE_B = [
+  '00002af1-0000-1000-8000-00805f9b34fb',
+  '0000ae01-0000-1000-8000-00805f9b34fb',
+  '0000ff02-0000-1000-8000-00805f9b34fb',
+  '49535343-8841-43f4-a8d4-ecbe34729bb3',
+];
 
 /**
  * Printer ready notification signature
@@ -50,6 +67,23 @@ const DEFAULT_SCAN_TIME_MS = 4000;
 const SCAN_FOR_ONE_TIMEOUT_MS = 10000;
 const WAIT_AFTER_EACH_CHUNK_MS = 20;
 const WAIT_FOR_PRINTER_DONE_TIMEOUT_MS = 30000;
+const WRITE_ACK_INTERVAL = 16;
+
+export const ALL_POSSIBLE_SERVICE_UUIDS = [
+  ...POSSIBLE_SERVICE_UUIDS,
+  ...POSSIBLE_SERVICE_UUIDS_DEVICE_B,
+  ...POSSIBLE_SERVICE_UUIDS_DEVICE_C,
+];
+
+function normalizeUuid(uuid: string): string {
+  const lower = uuid.toLowerCase();
+  if (lower.length === 4) return `0000${lower}-0000-1000-8000-00805f9b34fb`;
+  return lower;
+}
+
+function uuidEq(a: string, b: string): boolean {
+  return normalizeUuid(a) === normalizeUuid(b);
+}
 
 /**
  * Printer Service Class
@@ -102,6 +136,20 @@ export class PrinterService {
     } catch {
       return { tx: defaults.tx.toLowerCase(), rx: defaults.rx.toLowerCase() };
     }
+  }
+
+  private async resolveCharacteristicForDeviceB(serviceUuid: string): Promise<string> {
+    if (!this.connectedDevice) {
+      throw new Error('No device connected');
+    }
+    const chars = await this.connectedDevice.characteristicsForService(serviceUuid);
+    const tx = chars.find((c) =>
+      TX_CHARACTERISTIC_UUID_DEVICE_B.some((candidate) => uuidEq(c.uuid, candidate))
+    );
+    if (!tx?.uuid) {
+      throw new Error('Compatible write characteristic not found for Device Type B');
+    }
+    return tx.uuid.toLowerCase();
   }
   
   constructor() {
@@ -193,6 +241,13 @@ export class PrinterService {
 
     const scanTimeMs = options?.scanTimeMs ?? DEFAULT_SCAN_TIME_MS;
     const listAll = options?.listAll ?? false;
+    const deviceType = await loadPrinterDeviceType();
+    const serviceCandidates =
+      deviceType === 'C'
+        ? POSSIBLE_SERVICE_UUIDS_DEVICE_C
+        : deviceType === 'B'
+          ? POSSIBLE_SERVICE_UUIDS_DEVICE_B
+          : POSSIBLE_SERVICE_UUIDS;
     const seen = new Map<string, Device>();
 
     return new Promise((resolve, reject) => {
@@ -213,9 +268,14 @@ export class PrinterService {
           }
           if (!device?.id) return;
 
-          const isPrinter = listAll || device.serviceUUIDs?.some(uuid =>
-            POSSIBLE_SERVICE_UUIDS.includes(uuid.toLowerCase())
-          ) || /^(GT01|GB0[23]|YT01)/i.test(device.name || '');
+          const byService = device.serviceUUIDs?.some((uuid) =>
+            serviceCandidates.some((service) => uuidEq(uuid, service))
+          );
+          const byName =
+            deviceType === 'C'
+              ? /^(PPG_|PeriPage|A2|A6)/i.test(device.name || '')
+              : /^(GT01|GB0[23]|YT01)/i.test(device.name || '');
+          const isPrinter = listAll || byService || byName;
           if (isPrinter && !seen.has(device.id)) {
             seen.set(device.id, device);
           }
@@ -232,6 +292,13 @@ export class PrinterService {
    * @returns Found device
    */
   async scanForPrinter(deviceName?: string, scanTimeMs: number = SCAN_FOR_ONE_TIMEOUT_MS): Promise<Device> {
+    const deviceType = await loadPrinterDeviceType();
+    const serviceCandidates =
+      deviceType === 'C'
+        ? POSSIBLE_SERVICE_UUIDS_DEVICE_C
+        : deviceType === 'B'
+          ? POSSIBLE_SERVICE_UUIDS_DEVICE_B
+          : POSSIBLE_SERVICE_UUIDS;
     this.checkBleAvailable();
     await this.initialize();
 
@@ -257,9 +324,12 @@ export class PrinterService {
 
           const isMatch = deviceName
             ? device.name === deviceName
-            : device.serviceUUIDs?.some(uuid =>
-                POSSIBLE_SERVICE_UUIDS.includes(uuid.toLowerCase())
-              ) || /^(GT01|GB0[23]|YT01)/i.test(device.name || '');
+            : device.serviceUUIDs?.some((uuid) =>
+                serviceCandidates.some((service) => uuidEq(uuid, service))
+              ) ||
+              (deviceType === 'C'
+                ? /^(PPG_|PeriPage|A2|A6)/i.test(device.name || '')
+                : /^(GT01|GB0[23]|YT01)/i.test(device.name || ''));
 
           if (isMatch) {
             clearTimeout(timeout);
@@ -417,13 +487,20 @@ export class PrinterService {
       throw new Error('No device connected');
     }
     
+    const deviceType = await loadPrinterDeviceType();
     // Find the service that contains our characteristic
     const services = await this.connectedDevice.services();
     let targetService = null;
     
     for (const service of services) {
       const serviceUuid = service.uuid.toLowerCase();
-      if (POSSIBLE_SERVICE_UUIDS.includes(serviceUuid)) {
+      const knownServices =
+        deviceType === 'C'
+          ? POSSIBLE_SERVICE_UUIDS_DEVICE_C
+          : deviceType === 'B'
+            ? POSSIBLE_SERVICE_UUIDS_DEVICE_B
+            : POSSIBLE_SERVICE_UUIDS;
+      if (knownServices.some((uuid) => uuidEq(serviceUuid, uuid))) {
         targetService = service;
         break;
       }
@@ -433,11 +510,16 @@ export class PrinterService {
       throw new Error('Printer service not found');
     }
     
-    // Resolve characteristics for this service (aeXX/afXX variants)
-    const { tx } = await this.resolveCharacteristicPair(targetService.uuid);
-
-    // Set up notifications
-    await this.setupNotifications();
+    let tx = '';
+    if (deviceType === 'B' || deviceType === 'C') {
+      tx = await this.resolveCharacteristicForDeviceB(targetService.uuid);
+    } else {
+      // Resolve characteristics for this service (aeXX/afXX variants)
+      const pair = await this.resolveCharacteristicPair(targetService.uuid);
+      tx = pair.tx;
+      // Type A keeps existing notification/ready flow.
+      await this.setupNotifications();
+    }
     
     const updatedDevice = await this.connectedDevice.requestMTU(512);
     const mtu = updatedDevice.mtu ?? 512;
@@ -452,19 +534,61 @@ export class PrinterService {
       const chunk = buffer.slice(i, Math.min(i + chunkSize, buffer.length));
       const base64Chunk = chunk.toString('base64');
       
-      try {
-        await this.connectedDevice.writeCharacteristicWithResponseForService(
-          targetService.uuid,
-          tx,
-          base64Chunk
-        );
-      } catch {
-        // Some devices reject "with response"; fallback keeps compatibility with Cat-printer clones.
-        await this.connectedDevice.writeCharacteristicWithoutResponseForService(
-          targetService.uuid,
-          tx,
-          base64Chunk
-        );
+      if (deviceType === 'B') {
+        const needsAck = ((i / chunkSize) % WRITE_ACK_INTERVAL) === 0;
+        if (needsAck) {
+          try {
+            await this.connectedDevice.writeCharacteristicWithResponseForService(
+              targetService.uuid,
+              tx,
+              base64Chunk
+            );
+          } catch {
+            // Some Type-B compatible printers/characteristics reject "with response".
+            // Fallback to without-response to match Print2BLE-style transport robustness.
+            await this.connectedDevice.writeCharacteristicWithoutResponseForService(
+              targetService.uuid,
+              tx,
+              base64Chunk
+            );
+          }
+        } else {
+          await this.connectedDevice.writeCharacteristicWithoutResponseForService(
+            targetService.uuid,
+            tx,
+            base64Chunk
+          );
+        }
+      } else if (deviceType === 'C') {
+        const needsAck = ((i / chunkSize) % WRITE_ACK_INTERVAL) === 0;
+        if (needsAck) {
+          await this.connectedDevice.writeCharacteristicWithResponseForService(
+            targetService.uuid,
+            tx,
+            base64Chunk
+          );
+        } else {
+          await this.connectedDevice.writeCharacteristicWithoutResponseForService(
+            targetService.uuid,
+            tx,
+            base64Chunk
+          );
+        }
+      } else {
+        try {
+          await this.connectedDevice.writeCharacteristicWithResponseForService(
+            targetService.uuid,
+            tx,
+            base64Chunk
+          );
+        } catch {
+          // Some devices reject "with response"; fallback keeps compatibility with Cat-printer clones.
+          await this.connectedDevice.writeCharacteristicWithoutResponseForService(
+            targetService.uuid,
+            tx,
+            base64Chunk
+          );
+        }
       }
       
       // Wait between chunks
@@ -473,8 +597,10 @@ export class PrinterService {
       );
     }
     
-    // Wait for printer to finish
-    await this.waitForPrinterReady();
+    if (deviceType === 'A') {
+      // Type A relies on this done signal.
+      await this.waitForPrinterReady();
+    }
   }
   
   /**

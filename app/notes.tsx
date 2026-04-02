@@ -1,4 +1,5 @@
 import { NoteItem, deleteNote, loadNotes } from '@/src/storage/notes';
+import { PrinterDeviceType, loadPrinterDeviceType, savePrinterDeviceType } from '@/src/storage/printerDeviceType';
 import { usePrinterStore } from '@/src/store/usePrinterStore';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -197,6 +198,53 @@ function makeStyles(dark: boolean) {
       marginHorizontal: 16,
       marginVertical: 6,
     },
+    secretBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      paddingHorizontal: 24,
+    },
+    secretCard: {
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: C.border,
+      backgroundColor: C.drawerBg,
+      padding: 16,
+      gap: 12,
+    },
+    secretTitle: {
+      color: C.text,
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    secretSub: {
+      color: C.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    typeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderWidth: 1,
+      borderColor: C.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 10,
+    },
+    typeLabelWrap: { flex: 1, gap: 2 },
+    typeTitle: { color: C.text, fontSize: 14, fontWeight: '600' },
+    typeBody: { color: C.textMuted, fontSize: 12 },
+    secretDoneBtn: {
+      marginTop: 6,
+      alignSelf: 'flex-end',
+      borderRadius: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+      backgroundColor: C.drawerActive,
+    },
+    secretDoneText: { color: C.drawerActiveText, fontWeight: '700' },
   });
 }
 
@@ -213,6 +261,8 @@ export default function NotesScreen() {
 
   // ── Drawer animation ──
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [deviceType, setDeviceType] = useState<PrinterDeviceType>('A');
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
 
@@ -247,8 +297,19 @@ export default function NotesScreen() {
   }, []);
 
   useEffect(() => { fetchNotes(); }, [fetchNotes]);
+  useEffect(() => {
+    (async () => {
+      const type = await loadPrinterDeviceType();
+      setDeviceType(type);
+    })();
+  }, []);
 
   useFocusEffect(useCallback(() => { fetchNotes(); }, [fetchNotes]));
+  const chooseDeviceType = useCallback(async (type: PrinterDeviceType) => {
+    setDeviceType(type);
+    await savePrinterDeviceType(type);
+  }, []);
+
 
   const onDelete = useCallback((note: NoteItem) => {
     Alert.alert('Delete note', 'Remove this note?', [
@@ -407,7 +468,12 @@ export default function NotesScreen() {
             </TouchableOpacity>
 
             {/* Reminders — fake UI item */}
-            <TouchableOpacity style={styles.drawerItem} onPress={() => closeDrawer()}>
+            <TouchableOpacity
+              style={styles.drawerItem}
+              onPress={() => closeDrawer()}
+              onLongPress={() => setShowSecret(true)}
+              delayLongPress={450}
+            >
               <MaterialIcons name="notifications-none" size={22} color={C.drawerIcon} />
               <Text style={styles.drawerItemLabel}>Reminders</Text>
             </TouchableOpacity>
@@ -455,6 +521,62 @@ export default function NotesScreen() {
             </TouchableOpacity>
           </Animated.View>
         </View>
+      </Modal>
+      <Modal
+        visible={showSecret}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSecret(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setShowSecret(false)}>
+          <View style={styles.secretBackdrop}>
+            <TouchableWithoutFeedback>
+              <View style={styles.secretCard}>
+                <Text style={styles.secretTitle}>Printer Device Type</Text>
+                <Text style={styles.secretSub}>
+                  Type A keeps current flow. Type B uses the alternate BLE printer protocol.
+                </Text>
+
+                <TouchableOpacity style={styles.typeRow} onPress={() => chooseDeviceType('A')}>
+                  <View style={styles.typeLabelWrap}>
+                    <Text style={styles.typeTitle}>Device Type A</Text>
+                  </View>
+                  <MaterialIcons
+                    name={deviceType === 'A' ? 'radio-button-checked' : 'radio-button-unchecked'}
+                    size={21}
+                    color={deviceType === 'A' ? C.drawerActiveText : C.textMuted}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.typeRow} onPress={() => chooseDeviceType('B')}>
+                  <View style={styles.typeLabelWrap}>
+                    <Text style={styles.typeTitle}>Device Type B</Text>
+                  </View>
+                  <MaterialIcons
+                    name={deviceType === 'B' ? 'radio-button-checked' : 'radio-button-unchecked'}
+                    size={21}
+                    color={deviceType === 'B' ? C.drawerActiveText : C.textMuted}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.typeRow} onPress={() => chooseDeviceType('C')}>
+                  <View style={styles.typeLabelWrap}>
+                    <Text style={styles.typeTitle}>Device Type C</Text>
+                  </View>
+                  <MaterialIcons
+                    name={deviceType === 'C' ? 'radio-button-checked' : 'radio-button-unchecked'}
+                    size={21}
+                    color={deviceType === 'C' ? C.drawerActiveText : C.textMuted}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.secretDoneBtn} onPress={() => setShowSecret(false)}>
+                  <Text style={styles.secretDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );

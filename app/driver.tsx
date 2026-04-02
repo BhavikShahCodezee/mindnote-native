@@ -1,3 +1,4 @@
+import { DriverRunType } from '@/src/constants/driverRunTypes';
 import {
   CustomApiConfig,
   DEFAULT_INJECT_ID,
@@ -25,7 +26,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { DriverRunType } from '@/src/constants/driverRunTypes';
 
 const DARK = {
   bg: '#202124',
