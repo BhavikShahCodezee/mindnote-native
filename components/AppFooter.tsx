@@ -1,10 +1,16 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
 
 export function AppFooter() {
+  const version =
+    Constants.expoConfig?.version ??
+    // Some Expo environments expose version via manifest.
+    (Constants.manifest as unknown as { version?: string } | undefined)?.version ??
+    'unknown';
   return (
     <View style={styles.footer}>
-      <Text style={styles.footerText}>Version 1.0.0</Text>
+      <Text style={styles.footerText}>Version {version}</Text>
       <Text style={styles.footerText}>Copyright © Mind-Note</Text>
       <Text style={styles.footerText}>Made with ❤️</Text>
     </View>
