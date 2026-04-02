@@ -22,7 +22,7 @@ const PREVIEW_INNER_H_PX = SETTINGS_PREVIEW_HEIGHT_PX - 2 * PREVIEW_PADDING_PX;
 interface TextPrintOptions {
   text: string;
   fontSize: number;
-  fontStyle?: FontStyleKey;
+  fontStyle?: FontStyleKey | 'System';
   wrapBySpaces: boolean;
   energy?: number;
   device?: Device | null;
@@ -99,7 +99,7 @@ function glyphFor(ch: string): number[] {
 function createTextBoxMono(
   text: string,
   fontSize: number,
-  fontStyle: FontStyleKey,
+  fontStyle: FontStyleKey | 'System',
   wrapBySpaces: boolean,
   containerWidthPx: number
 ): BinaryImage {
