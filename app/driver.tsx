@@ -1,7 +1,6 @@
 import {
   CustomApiConfig,
   DEFAULT_INJECT_ID,
-  INJECT_ONE_BASE_URL,
   INJECT_ONE_RESPONSE_KEY,
   addCustomApi,
   createCustomApi,
@@ -15,6 +14,9 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,6 +25,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DriverRunType } from '@/src/constants/driverRunTypes';
 
 const DARK = {
   bg: '#202124',
@@ -37,6 +40,7 @@ const DARK = {
   customCardBg: '#2a2d32',
   customCardBorder: '#5f6368',
   addBtnBg: '#2d3748',
+  accordionHeaderBg: '#2d2e31',
 };
 
 const LIGHT = {
@@ -52,7 +56,10 @@ const LIGHT = {
   customCardBg: '#ffffff',
   customCardBorder: '#e0e0e0',
   addBtnBg: '#edf1f7',
+  accordionHeaderBg: '#ffffff',
 };
+
+const TOP_BAR_OFFSET = Platform.OS === 'ios' ? 52 : 56;
 
 export default function DriverScreen() {
   const router = useRouter();
@@ -65,8 +72,27 @@ export default function DriverScreen() {
   const [newUrl, setNewUrl] = useState('');
   const [newKey, setNewKey] = useState('');
   const [newName, setNewName] = useState('');
+  const [injectExpanded, setInjectExpanded] = useState(true);
+  const [customExpanded, setCustomExpanded] = useState(true);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardInset(e.endCoordinates.height)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardInset(0)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -74,6 +100,12 @@ export default function DriverScreen() {
       setInjectId(settings.injectId);
       setCustomApis(settings.customApis);
     })();
+  }, []);
+
+  const scrollAfterLayout = useCallback(() => {
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
   }, []);
 
   const onInjectIdChange = useCallback((val: string) => {
@@ -118,14 +150,14 @@ export default function DriverScreen() {
     ]);
   }, []);
 
-  const onStartInjectOne = useCallback(() => {
+  const onStartInject = useCallback(() => {
     const id = injectId.trim() || DEFAULT_INJECT_ID;
     router.push({
       pathname: '/driver-run' as never,
       params: {
-        type: 'inject-one',
+        type: DriverRunType.Inject,
         injectId: id,
-        name: 'Inject One',
+        name: 'Inject',
       },
     });
   }, [injectId, router]);
@@ -134,7 +166,7 @@ export default function DriverScreen() {
     router.push({
       pathname: '/driver-run' as never,
       params: {
-        type: 'custom',
+        type: DriverRunType.Custom,
         url: api.url,
         responseKey: api.responseKey,
         name: api.name,
@@ -142,9 +174,45 @@ export default function DriverScreen() {
     });
   }, [router]);
 
+  const openAddForm = useCallback(() => {
+    setCustomExpanded(true);
+    setShowAddForm(true);
+    setTimeout(scrollAfterLayout, 350);
+  }, [scrollAfterLayout]);
+
+  const accordionHeader = (
+    title: string,
+    expanded: boolean,
+    onToggle: () => void,
+    accentColor: string
+  ) => (
+    <TouchableOpacity
+      style={[
+        styles.accordionHeader,
+        {
+          backgroundColor: C.accordionHeaderBg,
+          borderColor: C.border,
+        },
+      ]}
+      onPress={onToggle}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityState={{ expanded }}
+    >
+      <View style={styles.accordionHeaderLeft}>
+        <MaterialIcons name="folder-open" size={22} color={accentColor} />
+        <Text style={[styles.accordionTitle, { color: C.text }]}>{title}</Text>
+      </View>
+      <MaterialIcons
+        name={expanded ? 'expand-less' : 'expand-more'}
+        size={28}
+        color={C.textMuted}
+      />
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]} edges={['top']}>
-      {/* Header */}
       <View style={[styles.topBar, { borderBottomColor: C.divider }]}>
         <TouchableOpacity style={styles.topBarBtn} onPress={() => router.back()} accessibilityLabel="Back">
           <MaterialIcons name="arrow-back" size={24} color={C.text} />
@@ -153,171 +221,190 @@ export default function DriverScreen() {
         <Text style={[styles.topBarTitle, { color: C.text }]}>api Intigration</Text>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={TOP_BAR_OFFSET}
       >
-        {/* ── Inject ID ── */}
-        <View style={[styles.card, { backgroundColor: C.cardBg, borderColor: C.border }]}>
-          <Text style={[styles.sectionTitle, { color: C.text }]}>Inject ID</Text>
-          <Text style={[styles.hint, { color: C.textMuted }]}>
-            Your unique inject ID. Used to fetch print data from the server.
-          </Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
-            value={injectId}
-            onChangeText={onInjectIdChange}
-            placeholder="e.g. xxxxx"
-            placeholderTextColor={C.textMuted}
-            keyboardType="numeric"
-            returnKeyType="done"
-          />
-          <View style={[styles.urlPreview, { backgroundColor: C.inputBg, borderColor: C.border }]}>
-            <MaterialIcons name="link" size={14} color={C.textMuted} />
-            <Text style={[styles.urlPreviewText, { color: C.textMuted }]} numberOfLines={1}>
-              {INJECT_ONE_BASE_URL}/{injectId.trim() || DEFAULT_INJECT_ID}/selection
-            </Text>
-          </View>
-        </View>
-
-        {/* ── API Sources ── */}
-        <Text style={[styles.sourcesLabel, { color: C.textMuted }]}>API SOURCES</Text>
-
-        {/* Inject One — built-in card */}
-        <TouchableOpacity
-          style={[styles.apiCard, { backgroundColor: C.injectCardBg, borderColor: C.injectCardBorder }]}
-          onPress={onStartInjectOne}
-          activeOpacity={0.8}
+        <ScrollView
+          ref={scrollRef}
+          contentContainerStyle={[
+            styles.container,
+            { paddingBottom: Math.max(40, keyboardInset + 32) },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
-          <View style={styles.apiCardLeft}>
-            <View style={styles.apiCardIcon}>
-              <MaterialIcons name="bolt" size={22} color="#0a7ea4" />
-            </View>
-            <View style={styles.apiCardInfo}>
-              <Text style={[styles.apiCardName, { color: C.text }]}>Inject One</Text>
-              <Text style={[styles.apiCardSub, { color: C.textMuted }]} numberOfLines={1}>
-                Key: <Text style={{ color: '#0a7ea4' }}>{INJECT_ONE_RESPONSE_KEY}</Text>
-              </Text>
-              <Text style={[styles.apiCardSub, { color: C.textMuted }]} numberOfLines={1}>
-                ID: {injectId.trim() || DEFAULT_INJECT_ID}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.apiCardStart}>
-            <MaterialIcons name="play-circle-filled" size={38} color="#0a7ea4" />
-          </View>
-        </TouchableOpacity>
-
-        {/* Custom API cards */}
-        {customApis.map((api) => (
-          <View
-            key={api.id}
-            style={[styles.apiCard, { backgroundColor: C.customCardBg, borderColor: C.customCardBorder }]}
-          >
-            <View style={styles.apiCardLeft}>
-              <View style={styles.apiCardIcon}>
-                <MaterialIcons name="api" size={20} color="#7c3aed" />
-              </View>
-              <View style={styles.apiCardInfo}>
-                <Text style={[styles.apiCardName, { color: C.text }]}>{api.name}</Text>
-                <Text style={[styles.apiCardSub, { color: C.textMuted }]} numberOfLines={1}>
-                  Key: <Text style={{ color: '#7c3aed' }}>{api.responseKey}</Text>
+          {/* ── Inject accordion ── */}
+          {accordionHeader('Inject', injectExpanded, () => setInjectExpanded((v) => !v), '#0a7ea4')}
+          {injectExpanded && (
+            <View style={styles.accordionBody}>
+              <View style={[styles.card, { backgroundColor: C.cardBg, borderColor: C.border }]}>
+                <Text style={[styles.sectionTitle, { color: C.text }]}>Inject ID</Text>
+                <Text style={[styles.hint, { color: C.textMuted }]}>
+                  Your unique inject ID. Used to fetch print data from the server.
                 </Text>
-                <Text style={[styles.apiCardUrl, { color: C.textMuted }]} numberOfLines={1}>
-                  {api.url}
-                </Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
+                  value={injectId}
+                  onChangeText={onInjectIdChange}
+                  placeholder="e.g. xxxxx"
+                  placeholderTextColor={C.textMuted}
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                  onFocus={scrollAfterLayout}
+                />
               </View>
-            </View>
-            <View style={styles.apiCardActions}>
+
               <TouchableOpacity
-                style={styles.deleteBtn}
-                onPress={() => onDeleteCustomApi(api.id, api.name)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={[styles.apiCard, { backgroundColor: C.injectCardBg, borderColor: C.injectCardBorder }]}
+                onPress={onStartInject}
+                activeOpacity={0.8}
               >
-                <MaterialIcons name="delete-outline" size={20} color="#ef4444" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => onStartCustomApi(api)}>
-                <MaterialIcons name="play-circle-filled" size={38} color="#7c3aed" />
+                <View style={styles.apiCardLeft}>
+                  <View style={styles.apiCardIcon}>
+                    <MaterialIcons name="bolt" size={22} color="#0a7ea4" />
+                  </View>
+                  <View style={styles.apiCardInfo}>
+                    <Text style={[styles.apiCardName, { color: C.text }]}>Inject</Text>
+                    <Text style={[styles.apiCardSub, { color: C.textMuted }]} numberOfLines={1}>
+                      Key: <Text style={{ color: '#0a7ea4' }}>{INJECT_ONE_RESPONSE_KEY}</Text>
+                    </Text>
+                    <Text style={[styles.apiCardSub, { color: C.textMuted }]} numberOfLines={1}>
+                      ID: {injectId.trim() || DEFAULT_INJECT_ID}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.apiCardStart}>
+                  <MaterialIcons name="play-circle-filled" size={38} color="#0a7ea4" />
+                </View>
               </TouchableOpacity>
             </View>
-          </View>
-        ))}
+          )}
 
-        {/* Add Custom API */}
-        {!showAddForm ? (
-          <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: C.addBtnBg, borderColor: C.border }]}
-            onPress={() => setShowAddForm(true)}
-          >
-            <MaterialIcons name="add" size={20} color="#0a7ea4" />
-            <Text style={styles.addBtnText}>Add Custom API</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={[styles.card, { backgroundColor: C.cardBg, borderColor: C.border }]}>
-            <Text style={[styles.sectionTitle, { color: C.text }]}>New Custom API</Text>
+          {/* ── Custom APIs accordion ── */}
+          {accordionHeader('Custom APIs', customExpanded, () => setCustomExpanded((v) => !v), '#7c3aed')}
+          {customExpanded && (
+            <View style={styles.accordionBody}>
+              {customApis.map((api) => (
+                <View
+                  key={api.id}
+                  style={[styles.apiCard, { backgroundColor: C.customCardBg, borderColor: C.customCardBorder }]}
+                >
+                  <View style={styles.apiCardLeft}>
+                    <View style={styles.apiCardIcon}>
+                      <MaterialIcons name="api" size={20} color="#7c3aed" />
+                    </View>
+                    <View style={styles.apiCardInfo}>
+                      <Text style={[styles.apiCardName, { color: C.text }]}>{api.name}</Text>
+                      <Text style={[styles.apiCardSub, { color: C.textMuted }]} numberOfLines={1}>
+                        Key: <Text style={{ color: '#7c3aed' }}>{api.responseKey}</Text>
+                      </Text>
+                      <Text style={[styles.apiCardUrl, { color: C.textMuted }]} numberOfLines={1}>
+                        {api.url}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.apiCardActions}>
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => onDeleteCustomApi(api.id, api.name)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialIcons name="delete-outline" size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => onStartCustomApi(api)}>
+                      <MaterialIcons name="play-circle-filled" size={38} color="#7c3aed" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
 
-            <Text style={[styles.fieldLabel, { color: C.textMuted }]}>Name (optional)</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
-              value={newName}
-              onChangeText={setNewName}
-              placeholder={`Custom ${customApis.length + 1}`}
-              placeholderTextColor={C.textMuted}
-              returnKeyType="next"
-            />
+              {!showAddForm ? (
+                <TouchableOpacity
+                  style={[styles.addBtn, { backgroundColor: C.addBtnBg, borderColor: C.border }]}
+                  onPress={openAddForm}
+                >
+                  <MaterialIcons name="add" size={20} color="#0a7ea4" />
+                  <Text style={styles.addBtnText}>Add Custom API</Text>
+                </TouchableOpacity>
+              ) : (
+                <View
+                  style={[styles.card, { backgroundColor: C.cardBg, borderColor: C.border }]}
+                  onLayout={scrollAfterLayout}
+                >
+                  <Text style={[styles.sectionTitle, { color: C.text }]}>New Custom API</Text>
 
-            <Text style={[styles.fieldLabel, { color: C.textMuted }]}>API URL</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
-              value={newUrl}
-              onChangeText={setNewUrl}
-              placeholder="https://example.com/api/data"
-              placeholderTextColor={C.textMuted}
-              autoCapitalize="none"
-              keyboardType="url"
-              returnKeyType="next"
-            />
+                  <Text style={[styles.fieldLabel, { color: C.textMuted }]}>Name (optional)</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
+                    value={newName}
+                    onChangeText={setNewName}
+                    placeholder={`Custom ${customApis.length + 1}`}
+                    placeholderTextColor={C.textMuted}
+                    returnKeyType="next"
+                    onFocus={scrollAfterLayout}
+                  />
 
-            <Text style={[styles.fieldLabel, { color: C.textMuted }]}>Response Key</Text>
-            <TextInput
-              style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
-              value={newKey}
-              onChangeText={setNewKey}
-              placeholder="e.g.  value"
-              placeholderTextColor={C.textMuted}
-              autoCapitalize="none"
-              returnKeyType="done"
-            />
-            <Text style={[styles.keyHint, { color: C.textMuted }]}>
-              The JSON field name to extract from the response (e.g. <Text style={{ color: '#0a7ea4' }}>value</Text>)
-            </Text>
+                  <Text style={[styles.fieldLabel, { color: C.textMuted }]}>API URL</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
+                    value={newUrl}
+                    onChangeText={setNewUrl}
+                    placeholder="https://example.com/api/data"
+                    placeholderTextColor={C.textMuted}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                    returnKeyType="next"
+                    onFocus={scrollAfterLayout}
+                  />
 
-            <View style={styles.formActions}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, { borderColor: C.border }]}
-                onPress={() => {
-                  setShowAddForm(false);
-                  setNewUrl('');
-                  setNewKey('');
-                  setNewName('');
-                }}
-              >
-                <Text style={[styles.cancelBtnText, { color: C.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={onAddCustomApi}>
-                <Text style={styles.saveBtnText}>Add API</Text>
-              </TouchableOpacity>
+                  <Text style={[styles.fieldLabel, { color: C.textMuted }]}>Response Key</Text>
+                  <TextInput
+                    style={[styles.input, { backgroundColor: C.inputBg, borderColor: C.border, color: C.text }]}
+                    value={newKey}
+                    onChangeText={setNewKey}
+                    placeholder="e.g.  value"
+                    placeholderTextColor={C.textMuted}
+                    autoCapitalize="none"
+                    returnKeyType="done"
+                    onFocus={scrollAfterLayout}
+                  />
+                  <Text style={[styles.keyHint, { color: C.textMuted }]}>
+                    The JSON field name to extract from the response (e.g.{' '}
+                    <Text style={{ color: '#0a7ea4' }}>value</Text>)
+                  </Text>
+
+                  <View style={styles.formActions}>
+                    <TouchableOpacity
+                      style={[styles.cancelBtn, { borderColor: C.border }]}
+                      onPress={() => {
+                        setShowAddForm(false);
+                        setNewUrl('');
+                        setNewKey('');
+                        setNewName('');
+                      }}
+                    >
+                      <Text style={[styles.cancelBtnText, { color: C.textMuted }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.saveBtn} onPress={onAddCustomApi}>
+                      <Text style={styles.saveBtnText}>Add API</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
             </View>
-          </View>
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
+  flex: { flex: 1 },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -328,7 +415,20 @@ const styles = StyleSheet.create({
   topBarBtn: { padding: 10 },
   topBarIcon: { marginLeft: 4 },
   topBarTitle: { fontSize: 18, fontWeight: '600', marginLeft: 6 },
-  container: { padding: 16, gap: 12, paddingBottom: 40 },
+  container: { padding: 16, gap: 10, flexGrow: 1 },
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: 4,
+  },
+  accordionHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  accordionTitle: { fontSize: 16, fontWeight: '700' },
+  accordionBody: { gap: 12, paddingBottom: 4 },
   card: {
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
@@ -342,25 +442,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontSize: 15,
-  },
-  urlPreview: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  urlPreviewText: { fontSize: 12, flex: 1 },
-  sourcesLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    marginLeft: 4,
-    marginTop: 4,
   },
   apiCard: {
     flexDirection: 'row',

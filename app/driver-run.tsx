@@ -11,6 +11,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { DriverRunType } from '@/src/constants/driverRunTypes';
 import {
   ActivityIndicator,
   Animated,
@@ -76,7 +77,8 @@ export default function DriverRunScreen() {
   }, [fadeAnim]);
 
   const buildUrl = useCallback((): { url: string; key: string } => {
-    if (params.type === 'inject-one') {
+    const driverType = params.type as DriverRunType | undefined;
+    if (driverType === DriverRunType.Inject) {
       const id = params.injectId ?? '2';
       return {
         url: `${INJECT_ONE_BASE_URL}/${id}/selection`,
